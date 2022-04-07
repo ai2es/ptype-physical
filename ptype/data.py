@@ -57,14 +57,14 @@ def preprocess_data(data, input_features, output_features, scaler_type="standard
     scaled_data["test_x"] = pd.DataFrame(scalers["input"].transform(data["test"][input_features]), columns=input_features)
 
     scalers["output"] = LabelEncoder()
-    data_scaled["train_y"] = scalers["output"].fit_transform(data['train']['precip'])
-    data_scaled["val_y"] = scalers["output"].transform(data['val']['precip'])
-    data_scaled["test_y"] = scalers["output"].transform(data['test']['precip'])
+    scaled_data["train_y"] = scalers["output"].fit_transform(data['train']['precip'])
+    scaled_data["val_y"] = scalers["output"].transform(data['val']['precip'])
+    scaled_data["test_y"] = scalers["output"].transform(data['test']['precip'])
 
     if encoder_type == "onehot":
         scalers["output"] = OneHotEncoder(sparse=False)
-        data_scaled["train_y"] = encoder.fit_transform(data_scaled["train_y"].reshape(len(data_scaled["train_y"]), 1))
-        data_scaled["val_y"] = encoder.transform(data_scaled["val_y"].reshape(len(data_scaled["val_y"]), 1))
-        data_scaled["test_y"] = encoder.transform(data_scaled["test_y"].reshape(len(data_scaled["test_y"]), 1))
+        scaled_data["train_y"] = encoder.fit_transform(scaled_data["train_y"].reshape(len(scaled_data["train_y"]), 1))
+        scaled_data["val_y"] = encoder.transform(scaled_data["val_y"].reshape(len(scaled_data["val_y"]), 1))
+        scaled_data["test_y"] = encoder.transform(scaled_data["test_y"].reshape(len(scaled_data["test_y"]), 1))
 
     return scaled_data, scalers
