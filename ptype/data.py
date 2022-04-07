@@ -68,8 +68,8 @@ def preprocess_data(data, input_features, output_features, scaler_type="standard
 
     if encoder_type == "onehot":
         scalers["output"] = OneHotEncoder(sparse=False)
-        scaled_data["train_y"] = encoder.fit_transform(scaled_data["train_y"].reshape(len(scaled_data["train_y"]), 1))
-        scaled_data["val_y"] = encoder.transform(scaled_data["val_y"].reshape(len(scaled_data["val_y"]), 1))
-        scaled_data["test_y"] = encoder.transform(scaled_data["test_y"].reshape(len(scaled_data["test_y"]), 1))
+        scaled_data["train_y"] = scalers["output"].fit_transform(scaled_data["train_y"].reshape(len(scaled_data["train_y"]), 1))
+        scaled_data["val_y"] = scalers["output"].transform(scaled_data["val_y"].reshape(len(scaled_data["val_y"]), 1))
+        scaled_data["test_y"] = scalers["output"].transform(scaled_data["test_y"].reshape(len(scaled_data["test_y"]), 1))
 
     return scaled_data, scalers
