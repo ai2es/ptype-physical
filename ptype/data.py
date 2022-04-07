@@ -5,20 +5,18 @@ from tqdm import tqdm
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
 
-def load_ptype_data(data_path, source, train_val_test_proportion=[70,20,10], seed=1):
+def load_ptype_data(data_path, source, train_val_test_proportion=[70,20,10]):
     """
     Load Precip Type data
     Args:
         data_path (str): Path to data
         source (str): Precip observation source. Supports 'ASOS' or 'mPING'.
         train_val_test_proportion (list of int): proportion of data to use in each train, validation, and test split.
-        seed (int): random seed used in random shuffle.
     Returns:
     Dictionary of Pandas dataframes of training / validation / test data
     """
     
-    dates = [x[-16:-8] for x in os.listdir(os.path.join(data_path, source))]
-    random.Random(seed).shuffle(dates)
+    dates = sorted([x[-16:-8] for x in os.listdir(os.path.join(data_path, source))])
     
     data = {}
     train_split = int(train_val_test_proportion[0]/100 * len(dates))
@@ -36,34 +34,37 @@ def load_ptype_data(data_path, source, train_val_test_proportion=[70,20,10], see
 
     return data
 
-def preprocess_data(data, input_features, output_features, scaler_type="standard"):
+def preprocess_data(data, input_features, output_features, scaler_type="standard", encoder_type="onehot"):
     """
     Function to select features and scale data for ML
     Args:
         data (dictionary of dataframes for training and validation data):
         input_features (list): Input features
-        output_features (list): Output features
+        output_feature (list): Output feature
         scaler_type: Type of scaling to perform (supports "standard" and "minmax")
+        encoder_type: Type of encoder to perform (supports "label" and "onehot")
 
     Returns:
-        Dictionary of scaled data, dictionary of scaler objects
+        Dictionary of scaled and one-hot encoded data, dictionary of scaler objects
     """
     scalar_obs = {"minmax": MinMaxScaler, "standard": StandardScaler}
     scalers, scaled_data = {}, {}
 
-    scalers["input"], scalers["output"] = scalar_obs[scaler_type](), scalar_obs[scaler_type]()
+    scalers["input"] = scalar_obs[scaler_type]()
     scaled_data["train_x"] = pd.DataFrame(scalers["input"].fit_transform(data["train"][input_features]),
                                           columns=input_features)
     scaled_data["val_x"] = pd.DataFrame(scalers["input"].transform(data["val"][input_features]), columns=input_features)
     scaled_data["test_x"] = pd.DataFrame(scalers["input"].transform(data["test"][input_features]), columns=input_features)
-    scaled_data["train_y"] = pd.DataFrame(
-        scalers["output"].fit_transform(data["train"][output_features].values.reshape(-1, len([output_features]))),
-        columns=[output_features])
-    scaled_data["val_y"] = pd.DataFrame(
-        scalers["output"].transform(data["val"][output_features].values.reshape(-1, len([output_features]))),
-        columns=[output_features])
-    scaled_data["test_y"] = pd.DataFrame(
-        scalers["output"].transform(data["test"][output_features].values.reshape(-1, len([output_features]))),
-        columns=[output_features])
-    
+
+    scalers["output"] = LabelEncoder()
+    data_scaled["train_y"] = scalers["output"].fit_transform(data['train']['precip'])
+    data_scaled["val_y"] = scalers["output"].transform(data['val']['precip'])
+    data_scaled["test_y"] = scalers["output"].transform(data['test']['precip'])
+
+    if encoder_type == "onehot":
+        scalers["output"] = OneHotEncoder(sparse=False)
+        data_scaled["train_y"] = encoder.fit_transform(data_scaled["train_y"].reshape(len(data_scaled["train_y"]), 1))
+        data_scaled["val_y"] = encoder.transform(data_scaled["val_y"].reshape(len(data_scaled["val_y"]), 1))
+        data_scaled["test_y"] = encoder.transform(data_scaled["test_y"].reshape(len(data_scaled["test_y"]), 1))
+
     return scaled_data, scalers
