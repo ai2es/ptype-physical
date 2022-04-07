@@ -73,3 +73,15 @@ def preprocess_data(data, input_features, output_features, scaler_type="standard
         scaled_data["test_y"] = scalers["output"].transform(scaled_data["test_y"].reshape(len(scaled_data["test_y"]), 1))
 
     return scaled_data, scalers
+  
+  
+  def reshape_data_1dCNN(data, base_variables=['TEMP_C', 'T_DEWPOINT_C', 'UGRD_m/s', 'VGRD_m/s'], n_levels=67):
+    
+    arr = np.zeros(shape=(data.shape[0], n_levels, len(base_variables))).astype('float32')
+    
+    for i, var in enumerate(base_variables):
+        
+        profile_vars = [x for x in list(data.columns) if var in x]
+        arr[:, :, i] = data[profile_vars].values.astype('float32')
+    
+    return arr
