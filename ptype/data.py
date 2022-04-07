@@ -5,15 +5,20 @@ from tqdm import tqdm
 from sklearn.preprocessing import StandardScaler, MinMaxScaler,\
                                   OneHotEncoder, LabelEncoder
 
-def load_ptype_data(data_path, source, train_end='20181108', val_end='20200909'):
+def load_ptype_data(data_path, source, train_start='20130101', train_end='20181108',
+                    val_start='20181109', val_end='20200909',
+                    test_start='20200910', test_end='20210501'):
     """
     Load Precip Type data
     Args:
         data_path (str): Path to data
         source (str): Precip observation source. Supports 'ASOS' or 'mPING'.
+        train_start (str): Train split start date (format yyyymmdd).
         train_end (str): Train split end date (format yyyymmdd).
+        val_start (str): Valid split start date (format yyyymmdd).
         val_end (str): Valid split end date (format yyyymmdd).
-        
+        test_start (str): Test split start date (format yyyymmdd).
+        test_end (str): Test split end date (format yyyymmdd).        
     Returns:
     Dictionary of Pandas dataframes of training / validation / test data
     """
@@ -21,9 +26,9 @@ def load_ptype_data(data_path, source, train_end='20181108', val_end='20200909')
     dates = sorted([x[-16:-8] for x in os.listdir(os.path.join(data_path, source))])
     
     data = {}
-    data['train'] = dates[:dates.index(train_end) + 1]
-    data['val'] = dates[dates.index(train_end) + 1:dates.index(val_end) + 1]
-    data['test'] = dates[dates.index(val_end) + 1:]
+    data['train'] = dates[dates.index(train_start) : dates.index(train_end) + 1]
+    data['val'] = dates[dates.index(val_start) : dates.index(val_end) + 1]
+    data['test'] = dates[dates.index(test_start) : dates.index(test_end) + 1]
     
     for split in data.keys():
         dfs = []
