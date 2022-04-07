@@ -11,7 +11,7 @@ def load_ptype_data(data_path, source, train_val_test_proportion=[70,20,10]):
     Args:
         data_path (str): Path to data
         source (str): Precip observation source. Supports 'ASOS' or 'mPING'.
-        train_val_test_proportion (list of int): proportion of data to use in each train, validation, and test split.
+        train_val_test_proportion (list of int): Proportion of data to use in each train, validation, and test split.
     Returns:
     Dictionary of Pandas dataframes of training / validation / test data
     """
