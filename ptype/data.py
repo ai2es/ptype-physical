@@ -2,8 +2,8 @@ import os
 import random
 import pandas as pd
 from tqdm import tqdm
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
-
+from sklearn.preprocessing import StandardScaler, MinMaxScaler,\
+                                  OneHotEncoder, LabelEncoder
 
 def load_ptype_data(data_path, source, train_val_test_proportion=[70,20,10]):
     """
