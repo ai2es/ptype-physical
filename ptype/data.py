@@ -23,7 +23,7 @@ def load_ptype_data(data_path, source, train_start='20130101', train_end='201811
     Dictionary of Pandas dataframes of training / validation / test data
     """
     
-    dates = sorted([x[-16:-8] for x in os.listdir(os.path.join(data_path, source))])
+    dates = sorted([x[-16:-8] for x in os.listdir(data_path)])
     
     data = {}
     data['train'] = dates[dates.index(train_start) : dates.index(train_end) + 1]
@@ -34,7 +34,7 @@ def load_ptype_data(data_path, source, train_start='20130101', train_end='201811
         dfs = []
         for date in tqdm(data[split], desc=f"{split}"):
             f = f"{source}_rap_{date}.parquet"
-            dfs.append(pd.read_parquet(os.path.join(data_path, source, f)))
+            dfs.append(pd.read_parquet(os.path.join(data_path, f)))
         data[split] = pd.concat(dfs, ignore_index=True)            
 
     return data
