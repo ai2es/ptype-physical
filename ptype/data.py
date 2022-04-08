@@ -1,9 +1,11 @@
 import os
 import random
+import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from sklearn.preprocessing import StandardScaler, MinMaxScaler,\
                                   OneHotEncoder, LabelEncoder
+
 
 def load_ptype_data(data_path, source, train_start='20130101', train_end='20181108',
                     val_start='20181109', val_end='20200909',
