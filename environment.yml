@@ -23,6 +23,7 @@ dependencies:
   - sphinx
   - numba
   - cython
+  - flake8
   - pip:
     - tensorflow
     - tensorflow-probability
