@@ -1,9 +1,11 @@
 import os
 import random
+import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from sklearn.preprocessing import StandardScaler, MinMaxScaler,\
                                   OneHotEncoder, LabelEncoder
+
 
 def load_ptype_data(data_path, source, train_start='20130101', train_end='20181108',
                     val_start='20181109', val_end='20200909',
@@ -75,13 +77,9 @@ def preprocess_data(data, input_features, output_features, scaler_type="standard
     return scaled_data, scalers
   
   
-  def reshape_data_1dCNN(data, base_variables=['TEMP_C', 'T_DEWPOINT_C', 'UGRD_m/s', 'VGRD_m/s'], n_levels=67):
-    
+def reshape_data_1dCNN(data, base_variables=['TEMP_C', 'T_DEWPOINT_C', 'UGRD_m/s', 'VGRD_m/s'], n_levels=67):
     arr = np.zeros(shape=(data.shape[0], n_levels, len(base_variables))).astype('float32')
-    
     for i, var in enumerate(base_variables):
-        
         profile_vars = [x for x in list(data.columns) if var in x]
         arr[:, :, i] = data[profile_vars].values.astype('float32')
-    
     return arr
