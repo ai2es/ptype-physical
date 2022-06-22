@@ -1,0 +1,92 @@
+pbs:
+  jobs: 1
+  # kernel: "winter-ptype /glade/work/jwillson/conda-envs"
+  bash: ["module load conda/latest cudnn/8.2.2.26 cuda/11.4"]
+  batch:
+    l: ["select=1:ncpus=8:ngpus=1:mem=128GB", "walltime=12:00:00"]
+    A: "NAML0001"
+    q: "casper"
+    N: "echo_trial"
+    o: "/glade/work/jwillson/echo_trial.out"
+    e: "/glade/work/jwillson/echo_trial.err"
+optuna:
+  study_name: "denseNN_optimization"
+  storage: "sqlite:////glade/work/jwillson/echo_data.db"
+  reload: 0
+  objective: "/glade/u/home/jwillson/objective.py"
+  metric: "val_acc"
+  direction: "minimize"
+  n_trials: 1100
+  gpu: True
+  save_path: '/glade/work/jwillson/'
+  sampler:
+    type: "TPESampler"
+    n_startup_trials: 110 
+  parameters:
+    trainer:num_hidden_layers:
+      type: "int"
+      settings:
+        name: "num_hidden_layers"
+        low: 1
+        high: 10
+    trainer:hidden_size:
+      type: "int"
+      settings:
+        name: "hidden_size"
+        low: 50
+        high: 5000
+    trainer:ra_weight:
+      type: "float"
+      settings:
+        name: "ra_weight"
+        low: 0.01
+        high: 2.0     
+    trainer:sn_weight:
+      type: "float"
+      settings:
+        name: "sn_weight"
+        low: 0.01
+        high: 5.0    
+    trainer:pl_weight:
+      type: "float"
+      settings:
+        name: "pl_weight"
+        low: 0.01
+        high: 400.0    
+    trainer:fzra_weight:
+      type: "float"
+      settings:
+        name: "fzra_weight"
+        low: 0.01
+        high: 50.0    
+    trainer:dropout_rate:
+      type: "float"
+      settings:
+        name: "dropout_rate"
+        low: 0.0
+        high: 0.5
+    trainer:learning_rate:
+      type: "loguniform"
+      settings:
+        name: "learning_rate"
+        low: 0.0000001
+        high: 0.01
+    trainer:activation:
+      type: "categorical"
+      settings:
+        name: "activation"
+        choices: ["relu", "leaky", "elu", "selu"]
+    trainer:label_smoothing:
+      type: "float"
+      settings:
+        name: "label_smoothing"
+        low: 0.0
+        high: 0.25
+    trainer:batch_size:
+      type: "int"
+      settings:
+        name: "batch_size"
+        low: 1000
+        high: 100000 
+log:
+    save_path: "/glade/work/jwillson/log.txt"
