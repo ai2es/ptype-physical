@@ -1,40 +1,40 @@
 pbs:
-  jobs: 1
-  # kernel: "winter-ptype /glade/work/jwillson/conda-envs"
-  bash: ["module load conda/latest cudnn/8.2.2.26 cuda/11.4"]
+  jobs: 10
+  # kernel: "wptenv"
+  bash: ["source ~/.bashrc", "conda activate winter-ptype"]
   batch:
-    l: ["select=1:ncpus=8:ngpus=1:mem=128GB", "walltime=12:00:00"]
+    l: ["select=1:ncpus=8:ngpus=1:mem=128GB", "walltime=12:00:00", "gpu_type=v100"]
     A: "NAML0001"
     q: "casper"
     N: "echo_trial"
-    o: "/glade/work/jwillson/echo_trial.out"
-    e: "/glade/work/jwillson/echo_trial.err"
+    o: "/glade/work/jwillson/test/echo_trial.out"
+    e: "/glade/work/jwillson/test/echo_trial.err"
 optuna:
   study_name: "denseNN_optimization"
-  storage: "sqlite:////glade/work/jwillson/echo_data.db"
+  storage: "sqlite:////glade/work/jwillson/test/echo_data.db"
   reload: 0
-  objective: "/glade/u/home/jwillson/objective.py"
-  metric: "val_acc"
-  direction: "minimize"
-  n_trials: 1100
+  objective: "/glade/u/home/jwillson/ptype-physical/wpt-jwillson/code/objective.py"
+  metric: "val_average_acc"
+  direction: "maximize"
+  n_trials: 500
   gpu: True
-  save_path: '/glade/work/jwillson/'
+  save_path: '/glade/work/jwillson/test'
   sampler:
     type: "TPESampler"
-    n_startup_trials: 110 
+    n_startup_trials: 75 
   parameters:
     trainer:num_hidden_layers:
       type: "int"
       settings:
         name: "num_hidden_layers"
         low: 1
-        high: 10
+        high: 20
     trainer:hidden_size:
       type: "int"
       settings:
         name: "hidden_size"
         low: 50
-        high: 5000
+        high: 1000
     trainer:ra_weight:
       type: "float"
       settings:
@@ -87,6 +87,6 @@ optuna:
       settings:
         name: "batch_size"
         low: 1000
-        high: 100000 
+        high: 50000 
 log:
-    save_path: "/glade/work/jwillson/log.txt"
+    save_path: "/glade/work/jwillson/test/log.txt"

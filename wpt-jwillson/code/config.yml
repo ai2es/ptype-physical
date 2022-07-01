@@ -1,3 +1,70 @@
+asos_path: '/glade/p/cisl/aiml/ai2es/winter_ptypes/precip_rap/ASOS_mixture/'
+
+mping_path: '/glade/p/cisl/aiml/ai2es/winter_ptypes/precip_rap/mPING_mixture/'
+
+data_path: '/glade/work/jwillson/asos_data.parquet'
+
+save_data: '/glade/work/jwillson/test'
+
+callbacks: 
+      ModelCheckpoint:
+          monitor: "val_loss"
+          filepath: "/glade/work/jwillson/model.h5"
+          save_best_only: True
+          save_weights_only: True
+      EarlyStopping:
+          monitor: "val_loss"
+          patience: 4
+      ReduceLROnPlateau:
+          monitor: "val_loss"
+          factor: 0.2
+          patience: 2
+          min_lr: 0.0000001
+          mode: "auto"
+      CSVLogger:
+          filename: "/glade/work/jwillson/mlp_training_log.txt"
+          separator: " "
+          append: True
+          
+trainer:
+    n_splits: 1
+    train_size1: 0.9
+    train_size2: 0.885
+    metrics: 'val_acc'
+    run_eagerly: True
+    shuffle: True
+    epochs: 200
+    seed: 5
+    weights:
+        0: 1.0
+        1: 2.390605699027034
+        2: 653.8182863714779
+        3: 53.46892708504785
+    num_hidden_layers: 1
+    hidden_size: 100
+    dropout_rate: 0.25
+    batch_size: 20000
+    learning_rate: 0.001
+    activation: 'relu'
+    ra_weight: 0.3598372548496218
+    sn_weight: 0.8581255967761948
+    pl_weight: 222.41554809843402
+    fzra_weight: 19.554457392929145
+    label_smoothing: 0.0
+
+    # mping
+    # ra_weight: 0.6357249620818445
+    # sn_weight: 0.5421795425929754
+    # pl_weight: 2.559641573881027
+    # fzra_weight: 5.210897049969898
+    # asos
+    # ra_weight: 0.3598372548496218
+    # sn_weight: 0.8581255967761948
+    # pl_weight: 222.41554809843402
+    # fzra_weight: 19.554457392929145
+    
+outputvars: ['ra_percent', 'sn_percent', 'pl_percent', 'fzra_percent']
+
 tempvars: [ 'TEMP_C_0_m',
  'TEMP_C_10000_m',
  'TEMP_C_1000_m',
@@ -269,63 +336,3 @@ vgrdvars: [ 'VGRD_m/s_0_m',
  'VGRD_m/s_9250_m',
  'VGRD_m/s_9500_m',
  'VGRD_m/s_9750_m']
-
-outputvars: ['ra_percent', 'sn_percent', 'pl_percent', 'fzra_percent']
-
-asos_path: '/glade/p/cisl/aiml/ai2es/winter_ptypes/precip_rap/ASOS_mixture/'
-
-mping_path: '/glade/p/cisl/aiml/ai2es/winter_ptypes/precip_rap/mPING_mixture/'
-
-data_path: '/glade/work/jwillson/asos_data.parquet'
-
-save_data: '/glade/work/jwillson/optimized_model'
-
-callbacks: 
-      ModelCheckpoint:
-          monitor: "val_loss"
-          filepath: "/glade/work/jwillson/model.h5"
-          save_best_only: True
-          save_weights_only: True
-      EarlyStopping:
-          monitor: "val_loss"
-          patience: 4
-      ReduceLROnPlateau:
-          monitor: "val_loss"
-          factor: 0.2
-          patience: 2
-          min_lr: 0.0000001
-          mode: "auto"
-      CSVLogger:
-          filename: "/glade/work/jwillson/mlp_training_log.txt"
-          separator: " "
-          append: True
-          
-trainer:
-    n_splits: 1
-    train_size1: 0.9
-    train_size2: 0.885
-    num_hidden_layers: 1
-    hidden_size: 100
-    dropout_rate: 0.25
-    batch_size: 20000
-    learning_rate: 0.001
-    activation: 'relu'
-    metrics: 'acc'
-    run_eagerly: True
-    shuffle: True
-    epochs: 200
-    ra_weight: 0.3598372548496218
-    sn_weight: 0.8581255967761948
-    pl_weight: 222.41554809843402
-    fzra_weight: 19.554457392929145
-    label_smoothing: 0.0
-    # mping
-    # ra_weight: 0.6357249620818445
-    # sn_weight: 0.5421795425929754
-    # pl_weight: 2.559641573881027
-    # fzra_weight: 5.210897049969898
-    # asos
-    # ra_weight: 0.3598372548496218
-    # sn_weight: 0.8581255967761948
-    # pl_weight: 222.41554809843402
-    # fzra_weight: 19.554457392929145
