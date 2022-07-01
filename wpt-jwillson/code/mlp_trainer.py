@@ -11,44 +11,21 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import confusion_matrix
 from sklearn.utils.multiclass import unique_labels
 from sklearn.utils import class_weight
+from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.callbacks import Callback, ModelCheckpoint, CSVLogger, EarlyStopping
+from tensorflow.python.keras.callbacks import ReduceLROnPlateau, LearningRateScheduler
+from typing import List, Dict
 import sys
-sys.path.append('/glade/u/home/jwillson')
 from echo.src.base_objective import BaseObjective
-from callbacks import get_callbacks 
+from callbacks import get_callbacks
 
 logger = logging.getLogger(__name__)
 
-class Objective(BaseObjective):
-
-    def __init__(self, config, metric="val_acc", device="cuda"):
-
-        """Initialize the base class"""
-        BaseObjective.__init__(self, config, metric, device)
-
-    def train(self, trial, conf):
-
-        K.clear_session()
-
-        if "CSVLogger" in conf["callbacks"]:
-            del conf["callbacks"]["CSVLogger"]
-        if "ModelCheckpoint" in conf["callbacks"]:
-            del conf["callbacks"]["ModelCheckpoint"]
-
-        try:
-            train_history = trainer(conf)
-
-        except Exception as E:
-            logging.warning(
-                f"Trial {trial.number} failed due to error {str(E)}")
-            # raise optuna.TrialPruned()
-            raise
-            
-        results_dict = {self.metric:max(train_history[self.metric])}
-        return results_dict
-
-        
-
 def trainer(conf, trial=False, verbose=True):    
+    # set seed
+    tf.keras.utils.set_random_seed(1)
+    tf.config.experimental.enable_op_determinism()
+    
     # load data
     df = pd.read_parquet(conf['data_path'])
     
@@ -58,6 +35,7 @@ def trainer(conf, trial=False, verbose=True):
     n_splits = conf['trainer']['n_splits']
     train_size1 = conf['trainer']['train_size1'] # sets test size
     train_size2 = conf['trainer']['train_size2'] # sets valid size
+    seed = conf['trainer']['seed']
     num_hidden_layers = conf['trainer']['num_hidden_layers']
     hidden_size = conf['trainer']['hidden_size']
     dropout_rate = conf['trainer']['dropout_rate']
@@ -68,7 +46,7 @@ def trainer(conf, trial=False, verbose=True):
     fzra_weight = conf['trainer']['fzra_weight']
     class_weights = {0:ra_weight, 1:sn_weight, 2:pl_weight, 3:fzra_weight}
     learning_rate = conf['trainer']['learning_rate']
-    metrics = conf['trainer']['metrics']
+    # metrics = conf['trainer']['metrics']
     activation = conf['trainer']['activation']
     run_eagerly = conf['trainer']['run_eagerly']
     shuffle = conf['trainer']['shuffle']
@@ -78,11 +56,11 @@ def trainer(conf, trial=False, verbose=True):
     #split and preprocess the data
     df['day'] = df['datetime'].apply(lambda x: str(x).split(' ')[0])
     
-    splitter = GroupShuffleSplit(n_splits=n_splits, train_size=train_size1)
+    splitter = GroupShuffleSplit(n_splits=n_splits, train_size=train_size1, random_state=seed)
     train_idx, test_idx = list(splitter.split(df, groups=df['day']))[0]
     train_data, test_data = df.iloc[train_idx], df.iloc[test_idx]
     
-    splitter = GroupShuffleSplit(n_splits=n_splits, train_size=train_size2)
+    splitter = GroupShuffleSplit(n_splits=n_splits, train_size=train_size2, random_state=seed)
     train_idx, valid_idx = list(splitter.split(train_data, groups=train_data['day']))[0]
     train_data, valid_data = train_data.iloc[train_idx], train_data.iloc[valid_idx]
     
@@ -93,19 +71,6 @@ def trainer(conf, trial=False, verbose=True):
     y_train = train_data[outputs].to_numpy()
     y_valid = valid_data[outputs].to_numpy()
     y_test = test_data[outputs].to_numpy()
-    
-    # build and compile model
-    
-#     def build_model(input_size, hidden_size, output_size):
-#     model = tf.keras.models.Sequential(
-#         [tf.keras.layers.Dense(input_size, activation='relu'),
-#         tf.keras.layers.Dense(hidden_size, activation='relu'),
-#         tf.keras.layers.Dense(output_size, activation='softmax')]
-#     )
-#     return model
-
-#     model = build_model(len(features), hidden_size, len(outputs))
-#     model.build((batch_size, len(features)))
     
     def build_model(input_size, hidden_size, num_hidden_layers, output_size):
         model = tf.keras.models.Sequential()
@@ -138,11 +103,59 @@ def trainer(conf, trial=False, verbose=True):
     
     model = build_model(len(features), hidden_size, num_hidden_layers, len(outputs))
     model.build((batch_size, len(features)))
-    # model.summary()
+    model.summary()
+    
+    def average_acc(y_true, y_pred):
+        ra = 0
+        ra_tot = 0
+        sn = 0
+        sn_tot = 0
+        pl = 0
+        pl_tot = 0
+        fzra = 0
+        fzra_tot = 0
+        preds = np.argmax(y_pred, 1)
+        labels = np.argmax(y_true, 1)
+        for i in range(len(y_true)):
+            if labels[i] == 0:
+                if preds[i] == 0:
+                    ra += 1
+                ra_tot += 1
+            if labels[i] == 1:
+                if preds[i] == 1:
+                    sn += 1
+                sn_tot += 1
+            if labels[i] == 2:
+                if preds[i] == 2:
+                    pl += 1
+                pl_tot += 1
+            if labels[i] == 3:
+                if preds[i] == 3:
+                    fzra += 1
+                fzra_tot += 1
+        try:
+            ra_acc = ra/ra_tot
+        except ZeroDivisionError:
+            ra_acc = np.nan
+        try:
+            sn_acc = sn/sn_tot
+        except ZeroDivisionError:
+            sn_acc = np.nan
+        try:
+            pl_acc = pl/pl_tot
+        except ZeroDivisionError:
+            pl_acc = np.nan
+        try:
+            fzra_acc = fzra/fzra_tot
+        except ZeroDivisionError:
+            fzra_acc = np.nan
+        
+        acc = [ra_acc, sn_acc, pl_acc, fzra_acc]
+        return np.nanmean(acc, dtype=np.float64)
     
     optimizer = tf.keras.optimizers.Adam(learning_rate)
     loss = tf.keras.losses.CategoricalCrossentropy(label_smoothing=label_smoothing)
-    model.compile(loss=loss, optimizer=optimizer, metrics=metrics, run_eagerly=run_eagerly)
+    model.compile(loss=loss, optimizer=optimizer, metrics=[average_acc], run_eagerly=run_eagerly)
     callbacks = get_callbacks(conf)
     # callbacks.append(KerasPruningCallback(trial, self.metric, interval = 1))
     
@@ -150,14 +163,11 @@ def trainer(conf, trial=False, verbose=True):
     history = model.fit(x_train, y_train, validation_data=(x_valid, y_valid), class_weight=class_weights, callbacks=callbacks,
                      batch_size=batch_size, shuffle=shuffle, epochs=epochs)
     
-    K.clear_session()
-    del model
-    
     return history.history
     
 
 if __name__ == '__main__':
-    # ### Set up logger to print stuff
+    # Set up logger to print stuff
     root = logging.getLogger()
     root.setLevel(logging.DEBUG)
     formatter = logging.Formatter('%(levelname)s:%(name)s:%(message)s')
@@ -168,9 +178,8 @@ if __name__ == '__main__':
     ch.setFormatter(formatter)
     root.addHandler(ch)
     
-    config = 'config.yml'
+    config = 'asos_070122_config.yml'
     with open(config) as f:
         conf = yaml.load(f, Loader=yaml.FullLoader)
         
     train_history = trainer(conf)
-    print(max(train_history['val_acc']))
