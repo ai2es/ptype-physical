@@ -18,14 +18,12 @@ from typing import List, Dict
 import sys
 from echo.src.base_objective import BaseObjective
 from callbacks import get_callbacks
+from metrics import average_acc, ece, balanced_ece
+from seed import seed_everything
 
 logger = logging.getLogger(__name__)
 
 def trainer(conf, trial=False, verbose=True):    
-    # set seed
-    tf.keras.utils.set_random_seed(1)
-    tf.config.experimental.enable_op_determinism()
-    
     # load data
     df = pd.read_parquet(conf['data_path'])
     
@@ -46,14 +44,16 @@ def trainer(conf, trial=False, verbose=True):
     fzra_weight = conf['trainer']['fzra_weight']
     class_weights = {0:ra_weight, 1:sn_weight, 2:pl_weight, 3:fzra_weight}
     learning_rate = conf['trainer']['learning_rate']
-    # metrics = conf['trainer']['metrics']
     activation = conf['trainer']['activation']
     run_eagerly = conf['trainer']['run_eagerly']
     shuffle = conf['trainer']['shuffle']
     epochs = conf['trainer']['epochs']
     label_smoothing = conf['trainer']['label_smoothing']
     
-    #split and preprocess the data
+    # set seed
+    seed_everything(seed)
+    
+    # split and preprocess the data
     df['day'] = df['datetime'].apply(lambda x: str(x).split(' ')[0])
     
     splitter = GroupShuffleSplit(n_splits=n_splits, train_size=train_size1, random_state=seed)
@@ -105,59 +105,10 @@ def trainer(conf, trial=False, verbose=True):
     model.build((batch_size, len(features)))
     model.summary()
     
-    def average_acc(y_true, y_pred):
-        ra = 0
-        ra_tot = 0
-        sn = 0
-        sn_tot = 0
-        pl = 0
-        pl_tot = 0
-        fzra = 0
-        fzra_tot = 0
-        preds = np.argmax(y_pred, 1)
-        labels = np.argmax(y_true, 1)
-        for i in range(len(y_true)):
-            if labels[i] == 0:
-                if preds[i] == 0:
-                    ra += 1
-                ra_tot += 1
-            if labels[i] == 1:
-                if preds[i] == 1:
-                    sn += 1
-                sn_tot += 1
-            if labels[i] == 2:
-                if preds[i] == 2:
-                    pl += 1
-                pl_tot += 1
-            if labels[i] == 3:
-                if preds[i] == 3:
-                    fzra += 1
-                fzra_tot += 1
-        try:
-            ra_acc = ra/ra_tot
-        except ZeroDivisionError:
-            ra_acc = np.nan
-        try:
-            sn_acc = sn/sn_tot
-        except ZeroDivisionError:
-            sn_acc = np.nan
-        try:
-            pl_acc = pl/pl_tot
-        except ZeroDivisionError:
-            pl_acc = np.nan
-        try:
-            fzra_acc = fzra/fzra_tot
-        except ZeroDivisionError:
-            fzra_acc = np.nan
-        
-        acc = [ra_acc, sn_acc, pl_acc, fzra_acc]
-        return np.nanmean(acc, dtype=np.float64)
-    
     optimizer = tf.keras.optimizers.Adam(learning_rate)
     loss = tf.keras.losses.CategoricalCrossentropy(label_smoothing=label_smoothing)
-    model.compile(loss=loss, optimizer=optimizer, metrics=[average_acc], run_eagerly=run_eagerly)
+    model.compile(loss=loss, optimizer=optimizer, metrics=[average_acc, ece, balanced_ece], run_eagerly=run_eagerly)
     callbacks = get_callbacks(conf)
-    # callbacks.append(KerasPruningCallback(trial, self.metric, interval = 1))
     
     # train model
     history = model.fit(x_train, y_train, validation_data=(x_valid, y_valid), class_weight=class_weights, callbacks=callbacks,
@@ -178,7 +129,7 @@ if __name__ == '__main__':
     ch.setFormatter(formatter)
     root.addHandler(ch)
     
-    config = 'asos_070122_config.yml'
+    config = 'mping_070622_config.yml'
     with open(config) as f:
         conf = yaml.load(f, Loader=yaml.FullLoader)
         

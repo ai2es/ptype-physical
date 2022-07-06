@@ -3,7 +3,11 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import confusion_matrix
 
-def ptype_hist(df, col, dataset, bins=None):
+def ptype_hist(df, col, dataset, bins=None, filename=None):
+    """
+    Function to plot a histogram of a specified variable when
+    the percent of each ptype is greater than 0.
+    """
     ra = df[col][df['ra_percent'] > 0]
     sn = df[col][df['sn_percent'] > 0]
     pl = df[col][df['pl_percent'] > 0]
@@ -30,7 +34,65 @@ def ptype_hist(df, col, dataset, bins=None):
         ax[1,1].hist(fzra, bins=bins, density=True)
         ax[1,1].set_title('{} {} fzra'.format(dataset, col))
         
+    if filename:
+        path = '/glade/u/home/jwillson/winter-ptype/images/'
+        plt.savefig(path + filename, dpi=300, bbox_inches="tight")
+        
+    plt.show()
+        
+        
+def plot_2d_hist(x, y, bins=None, title=None, xlabel=None, ylabel=None, filename=None):
+    """
+    Function to plot a 2D histogram of the joint 
+    distribution of 2 variables.
+    """
+    fig, ax = plt.subplots(dpi=150)
+    cmap = cm.binary
+    if bins:
+        ax.hist2d(x, y, bins, cmap=cmap) 
+    else:
+        ax.hist2d(x, y, cmap=cmap)
+    if title:
+        ax.set_title(title, fontsize=16)
+    if xlabel:
+        ax.set_xlabel(xlabel, fontsize=12)
+    if ylabel:
+        ax.set_ylabel(ylabel, fontsize=12)
+    
+    plt.colorbar(cm.ScalarMappable(cmap=cmap))
+    ax.grid(True, alpha=0.25)
+
+    if filename:
+        path = '/glade/u/home/jwillson/winter-ptype/images/'
+        plt.savefig(path + filename, dpi=300, bbox_inches="tight")
+    
+    plt.show()
+    
+def plot_scatter(x, y, title=None, xlabel=None, ylabel=None, filename=None):
+    fig, ax = plt.subplots(dpi=150)
+    ax.scatter(x, y, s=2, c='k')
+    if title:
+        ax.set_title(title, fontsize=16)
+    if xlabel:
+        ax.set_xlabel(xlabel, fontsize=12)
+    if ylabel:
+        ax.set_ylabel(ylabel, fontsize=12)
+    
+    x1 = np.linspace(-40, 36, 1000)
+    y1 = x1
+    ax.plot(x1, y1, '-b')
+    ax.grid(True, alpha=0.25)
+
+    if filename:
+        path = '/glade/u/home/jwillson/winter-ptype/images/'
+        plt.savefig(path + filename, dpi=300, bbox_inches="tight")
+    
+    plt.show()
+        
 def plot_confusion_matrix(y_true, y_pred, classes, normalize=False, title=None, cmap=plt.cm.Blues, filename=None):
+    """
+    Function to plot a confusion matrix. 
+    """
     if not title:
         if normalize:
             title = 'Confusion Matrix (normalized)'
@@ -64,7 +126,7 @@ def plot_confusion_matrix(y_true, y_pred, classes, normalize=False, title=None, 
                    fontsize=14)
             
     if filename:
-        path = '/glade/u/home/jwillson/ptype-physical/wpt-jwillson/images/'
+        path = '/glade/u/home/jwillson/winter-ptype/images/'
         plt.savefig(path + filename, dpi=300, bbox_inches="tight")
         
     return ax
