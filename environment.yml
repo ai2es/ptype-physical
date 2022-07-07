@@ -27,4 +27,5 @@ dependencies:
   - pip:
     - tensorflow
     - tensorflow-probability
+    - permutationimportance
     - .
