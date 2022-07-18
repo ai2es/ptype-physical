@@ -24,8 +24,9 @@ dependencies:
   - numba
   - cython
   - flake8
+  - requests
+  - tensorflow
+  - tensorflow-probability
   - pip:
-    - tensorflow
-    - tensorflow-probability
     - permutationimportance
     - .
