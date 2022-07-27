@@ -1,20 +1,6 @@
-import yaml
-import pandas as pd
-pd.options.mode.chained_assignment = None
-import numpy as np
 import logging, tqdm
 from sklearn.model_selection import train_test_split, GroupShuffleSplit
 from sklearn.preprocessing import StandardScaler
-
-import optuna
-from echo.src.base_objective import BaseObjective
-from typing import List, Dict
-import sys
-import random
-import os
-import copy
-import time, glob
-from collections import defaultdict, OrderedDict
 
 import torch
 import torch.nn as nn
@@ -23,234 +9,25 @@ from torch.utils.data.dataset import TensorDataset, Dataset
 from torch.utils.data.dataloader import DataLoader
 import torch.nn.functional as F
 
-logger = logging.getLogger(__name__)
-        
-config1 = '/glade/u/home/jwillson/winter-ptype/code/evidential_config/hyper.yml'
-with open(config1) as f:       
-    conf1 = yaml.load(f, Loader=yaml.FullLoader)
+import copy
+import time, yaml, glob
+from collections import defaultdict, OrderedDict
 
-eval_metrics = conf1['optuna']['metric']
+import pandas as pd
+import numpy as np
+pd.options.mode.chained_assignment = None
 
-def torch_seed_everything(seed=1234):
-    random.seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.backends.cudnn.benchmark = True
-    torch.backends.cudnn.deterministic = True
-    
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+from cartopy import crs as ccrs
+from cartopy import feature as cfeature
 
-def get_device():
-    use_cuda = torch.cuda.is_available()
-    device = torch.device("cuda" if use_cuda else "cpu")
-    return device
-    
+from reliability import reliability_diagram, reliability_diagrams, compute_calibration
+from plotting import plot_confusion_matrix
+from losses import *
+from seed import torch_seed_everything
+from metrics import *
 
-def torch_acc(labels, preds):
-    return torch.mean((preds == labels.data).float()).item()
-
-
-def torch_average_acc(true_labels, pred_labels):
-    accs = []
-    for _label in true_labels.unique():
-        c = torch.where(true_labels == _label)
-        ave_acc = (true_labels[c] == pred_labels[c]).float().mean().item()
-        accs.append(ave_acc)
-    acc = np.mean(accs)
-    return acc
-
-
-def torch_ece(true_labels, pred_probs):
-    n_bins = 10
-    bin_boundaries = np.linspace(0, 1, n_bins + 1)
-    bin_lowers = bin_boundaries[:-1]
-    bin_uppers = bin_boundaries[1:]
-    confidences = torch.max(pred_probs, 1)[0]
-    predictions = torch.argmax(pred_probs, 1)
-    accuracies = predictions.eq(true_labels)
-    ece = torch.zeros(1, device=get_device())
-    for bin_lower, bin_upper in zip(bin_lowers, bin_uppers):
-        # Calculated |confidence - accuracy| in each bin
-        in_bin = confidences.gt(bin_lower.item()) * confidences.le(bin_upper.item())
-        prop_in_bin = in_bin.float().mean()
-        if prop_in_bin.item() > 0:
-            accuracy_in_bin = accuracies[in_bin].float().mean()
-            avg_confidence_in_bin = confidences[in_bin].mean()
-            ece += torch.abs(avg_confidence_in_bin - accuracy_in_bin) * prop_in_bin
-    return ece.item()*100 
-
-
-def torch_balanced_ece(true_labels, pred_probs):
-    class_ece = []
-    n_bins = 10
-    bin_boundaries = np.linspace(0, 1, n_bins + 1)
-    bin_lowers = bin_boundaries[:-1]
-    bin_uppers = bin_boundaries[1:]
-    confs = torch.max(pred_probs, 1)[0]
-    preds = torch.argmax(pred_probs, 1)
-    for _label in true_labels.unique():
-        c = torch.where(true_labels == _label)
-        confidences = confs[c]
-        predictions = preds[c]
-        accuracies = predictions.eq(true_labels[c])
-        ece = torch.zeros(1, device=get_device())
-        for bin_lower, bin_upper in zip(bin_lowers, bin_uppers):
-            # Calculated |confidence - accuracy| in each bin
-            in_bin = confidences.gt(bin_lower.item()) * confidences.le(bin_upper.item())
-            prop_in_bin = in_bin.float().mean()
-            if prop_in_bin.item() > 0:
-                accuracy_in_bin = accuracies[in_bin].float().mean()
-                avg_confidence_in_bin = confidences[in_bin].mean()
-                ece += torch.abs(avg_confidence_in_bin - accuracy_in_bin) * prop_in_bin
-        class_ece.append(ece.item()*100)
-    return np.mean(class_ece)
-
-
-def relu_evidence(y):
-    return F.relu(y)
-
-
-def exp_evidence(y):
-    return torch.exp(torch.clamp(y, -10, 10))
-
-
-def softplus_evidence(y):
-    return F.softplus(y)
-
-
-def kl_divergence(alpha, num_classes, device=None):
-    if not device:
-        device = get_device()
-    ones = torch.ones([1, num_classes], dtype=torch.float32, device=device)
-    sum_alpha = torch.sum(alpha, dim=1, keepdim=True)
-    first_term = (
-        torch.lgamma(sum_alpha)
-        - torch.lgamma(alpha).sum(dim=1, keepdim=True)
-        + torch.lgamma(ones).sum(dim=1, keepdim=True)
-        - torch.lgamma(ones.sum(dim=1, keepdim=True))
-    )
-    second_term = (
-        (alpha - ones)
-        .mul(torch.digamma(alpha) - torch.digamma(sum_alpha))
-        .sum(dim=1, keepdim=True)
-    )
-    kl = first_term + second_term
-    return kl
-
-
-def loglikelihood_loss(y, alpha, device=None):
-    if not device:
-        device = get_device()
-    y = y.to(device)
-    alpha = alpha.to(device)
-    S = torch.sum(alpha, dim=1, keepdim=True)
-    loglikelihood_err = torch.sum((y - (alpha / S)) ** 2, dim=1, keepdim=True)
-    loglikelihood_var = torch.sum(
-        alpha * (S - alpha) / (S * S * (S + 1)), dim=1, keepdim=True
-    )
-    loglikelihood = loglikelihood_err + loglikelihood_var
-    return loglikelihood
-
-
-def mse_loss(y, alpha, epoch_num, num_classes, annealing_step, device=None):
-    if not device:
-        device = get_device()
-    y = y.to(device)
-    alpha = alpha.to(device)
-    loglikelihood = loglikelihood_loss(y, alpha, device=device)
-
-    annealing_coef = torch.min(
-        torch.tensor(1.0, dtype=torch.float32),
-        torch.tensor(epoch_num / annealing_step, dtype=torch.float32),
-    )
-
-    kl_alpha = (alpha - 1) * (1 - y) + 1
-    kl_div = annealing_coef * kl_divergence(kl_alpha, num_classes, device=device)
-    return loglikelihood + kl_div
-
-
-def edl_loss(func, y, alpha, epoch_num, num_classes, annealing_step, device=None):
-    y = y.to(device)
-    alpha = alpha.to(device)
-    S = torch.sum(alpha, dim=1, keepdim=True)
-
-    A = torch.sum(y * (func(S) - func(alpha)), dim=1, keepdim=True)
-
-    annealing_coef = torch.min(
-        torch.tensor(1.0, dtype=torch.float32),
-        torch.tensor(epoch_num / annealing_step, dtype=torch.float32),
-    )
-
-    kl_alpha = (alpha - 1) * (1 - y) + 1
-    kl_div = annealing_coef * kl_divergence(kl_alpha, num_classes, device=device)
-    return A + kl_div
-
-
-def edl_mse_loss(output, target, epoch_num, num_classes, annealing_step, device=None):
-    if not device:
-        device = get_device()
-    evidence = relu_evidence(output)
-    alpha = evidence + 1
-    loss = torch.mean(
-        mse_loss(target, alpha, epoch_num, num_classes, annealing_step, device=device)
-    )
-    return loss
-
-
-def edl_log_loss(output, target, epoch_num, num_classes, annealing_step, device=None):
-    if not device:
-        device = get_device()
-    evidence = relu_evidence(output)
-    alpha = evidence + 1
-    loss = torch.mean(
-        edl_loss(
-            torch.log, target, alpha, epoch_num, num_classes, annealing_step, device
-        )
-    )
-    return loss
-
-
-def edl_digamma_loss(
-    output, target, epoch_num, num_classes, annealing_step, device=None
-):
-    if not device:
-        device = get_device()
-    evidence = relu_evidence(output)
-    alpha = evidence + 1
-    loss = torch.mean(
-        edl_loss(
-            torch.digamma, target, alpha, epoch_num, num_classes, annealing_step, device
-        )
-    )
-    return loss
-
-class Objective(BaseObjective):
-
-    def __init__(self, config, metric=eval_metrics, device="cuda"):
-
-        """Initialize the base class"""
-        BaseObjective.__init__(self, config, metric, device)
-
-    def train(self, trial, conf):
-        try:
-            model, optimizer, training_results, best_metrics = trainer(conf)
-        except Exception as E:
-            if "CUDA" in str(E):
-                logging.warning(
-                    f"Pruning trial {trial.number} due to CUDA memory overflow: {str(E)}.")
-                raise optuna.TrialPruned()
-            elif "reraise" in str(E):
-                logging.warning(
-                    f"Pruning trial {trial.number} due to unspecified error: {str(E)}.")
-                raise optuna.TrialPruned()
-            else:
-                logging.warning(
-                    f"Trial {trial.number} failed due to error: {str(E)}.")
-                raise E
-        results_dict = {metric:best_metrics[i] for i, metric in enumerate(self.metric)}
-        return results_dict   
-    
 def trainer(conf):
     df = pd.read_parquet(conf['data_path'])
 
@@ -261,6 +38,7 @@ def trainer(conf):
     train_path = f"{conf['train_path']}{upsampling}.pt"
     val_path = f"{conf['val_path']}{upsampling}.pt"
     save_path = conf['save_path']
+    model_name = f"{conf['model_name']}{upsampling}"
     
     seed = conf['trainer']['seed']
     epochs = conf['trainer']['epochs']
@@ -521,21 +299,13 @@ def trainer(conf):
         criterion=criterion
     )
     
+    torch.save(model.state_dict(), f'{save_path}{model_name}.pt')
+    
     return model, optimizer, training_results, best_metrics
     
-if __name__ == '__main__':
-    # Set up logger to print stuff
-    root = logging.getLogger()
-    root.setLevel(logging.DEBUG)
-    formatter = logging.Formatter('%(levelname)s:%(name)s:%(message)s')
 
-    # Stream output to stdout
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.INFO)
-    ch.setFormatter(formatter)
-    root.addHandler(ch)
-    
-    config = '/glade/u/home/jwillson/winter-ptype/code/evidential_config/config.yml'
+if __name__ == '__main__':
+    config = f'evidential_config/asos072022_pl10fzra2.yml'
     with open(config) as f:
         conf = yaml.load(f, Loader=yaml.FullLoader)
         
