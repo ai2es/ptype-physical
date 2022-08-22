@@ -8,3 +8,4 @@ jupyter
 jupyterlab
 cartopy
 requests
+metpy
