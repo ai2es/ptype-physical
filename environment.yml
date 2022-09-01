@@ -24,6 +24,7 @@ dependencies:
   - numba
   - cython
   - flake8
+  - pyarrow
   - pip:
     - tensorflow
     - tensorflow-probability
