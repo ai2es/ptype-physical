@@ -22,7 +22,6 @@ import random
 import os
 from collections import OrderedDict
 
-
 logger = logging.getLogger(__name__)
 
 # function to set universal seed
@@ -37,52 +36,15 @@ def seed_everything(seed=1234):
 metric = 'val_balanced_ece'
 
 def average_acc(y_true, y_pred):
-    ra = 0
-    ra_tot = 0
-    sn = 0
-    sn_tot = 0
-    pl = 0
-    pl_tot = 0
-    fzra = 0
-    fzra_tot = 0
-    preds = np.argmax(y_pred, 1)
-    labels = np.argmax(y_true, 1)
-    for i in range(len(y_true)):
-        if labels[i] == 0:
-            if preds[i] == 0:
-                ra += 1
-            ra_tot += 1
-        if labels[i] == 1:
-            if preds[i] == 1:
-                sn += 1
-            sn_tot += 1
-        if labels[i] == 2:
-            if preds[i] == 2:
-                pl += 1
-            pl_tot += 1
-        if labels[i] == 3:
-            if preds[i] == 3:
-                fzra += 1
-            fzra_tot += 1
-    try:
-        ra_acc = ra/ra_tot
-    except ZeroDivisionError:
-        ra_acc = np.nan
-    try:
-        sn_acc = sn/sn_tot
-    except ZeroDivisionError:
-        sn_acc = np.nan
-    try:
-        pl_acc = pl/pl_tot
-    except ZeroDivisionError:
-        pl_acc = np.nan
-    try:
-        fzra_acc = fzra/fzra_tot
-    except ZeroDivisionError:
-        fzra_acc = np.nan
-        
-    acc = [ra_acc, sn_acc, pl_acc, fzra_acc]
-    return np.nanmean(acc, dtype=np.float64)
+    pred_labels = np.argmax(y_pred, 1)
+    true_labels = np.argmax(y_true, 1)
+    accs = []
+    for _label in np.unique(true_labels):
+        c = np.where(true_labels == _label)
+        ave_acc = (true_labels[c] == pred_labels[c]).mean()
+        accs.append(ave_acc)
+    acc = np.mean(accs)
+    return acc
 
 def ece(y_true, y_pred):
     """
