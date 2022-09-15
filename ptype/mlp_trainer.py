@@ -30,10 +30,15 @@ def trainer(conf, trial=False, verbose=True):
     # model config
     features = conf['tempvars'] + conf['tempdewvars'] + conf['ugrdvars'] + conf['vgrdvars']
     outputs = conf['outputvars']
+    dataset = conf['dataset']
     n_splits = conf['trainer']['n_splits']
     train_size1 = conf['trainer']['train_size1'] # sets test size
     train_size2 = conf['trainer']['train_size2'] # sets valid size
     seed = conf['trainer']['seed']
+    run_eagerly = conf['trainer']['run_eagerly']
+    shuffle = conf['trainer']['shuffle']
+    epochs = conf['trainer']['epochs']
+    
     num_hidden_layers = conf['trainer']['num_hidden_layers']
     hidden_size = conf['trainer']['hidden_size']
     dropout_rate = conf['trainer']['dropout_rate']
@@ -45,33 +50,18 @@ def trainer(conf, trial=False, verbose=True):
     class_weights = {0:ra_weight, 1:sn_weight, 2:pl_weight, 3:fzra_weight}
     learning_rate = conf['trainer']['learning_rate']
     activation = conf['trainer']['activation']
-    run_eagerly = conf['trainer']['run_eagerly']
-    shuffle = conf['trainer']['shuffle']
-    epochs = conf['trainer']['epochs']
+
     label_smoothing = conf['trainer']['label_smoothing']
     
     # set seed
     seed_everything(seed)
     
-    # split and preprocess the data
-    df['day'] = df['datetime'].apply(lambda x: str(x).split(' ')[0])
-    
-    splitter = GroupShuffleSplit(n_splits=n_splits, train_size=train_size1, random_state=seed)
-    train_idx, test_idx = list(splitter.split(df, groups=df['day']))[0]
-    train_data, test_data = df.iloc[train_idx], df.iloc[test_idx]
-    
-    splitter = GroupShuffleSplit(n_splits=n_splits, train_size=train_size2, random_state=seed)
-    train_idx, valid_idx = list(splitter.split(train_data, groups=train_data['day']))[0]
-    train_data, valid_data = train_data.iloc[train_idx], train_data.iloc[valid_idx]
-    
-    scaler_x = StandardScaler()
-    x_train = scaler_x.fit_transform(train_data[features])
-    x_valid = scaler_x.transform(valid_data[features])
-    x_test = scaler_x.transform(test_data[features])
-    y_train = train_data[outputs].to_numpy()
-    y_valid = valid_data[outputs].to_numpy()
-    y_test = test_data[outputs].to_numpy()
-    
+    # load splits
+    x_train = np.load(f'/glade/work/jwillson/{dataset}_data/{dataset}_x_train.npy')
+    x_valid = np.load(f'/glade/work/jwillson/{dataset}_data/{dataset}_x_val.npy')
+    y_train = np.load(f'/glade/work/jwillson/{dataset}_data/{dataset}_y_train.npy')
+    y_valid = np.load(f'/glade/work/jwillson/{dataset}_data/{dataset}_y_val.npy')
+
     def build_model(input_size, hidden_size, num_hidden_layers, output_size):
         model = tf.keras.models.Sequential()
         
@@ -107,7 +97,7 @@ def trainer(conf, trial=False, verbose=True):
     
     optimizer = tf.keras.optimizers.Adam(learning_rate)
     loss = tf.keras.losses.CategoricalCrossentropy(label_smoothing=label_smoothing)
-    model.compile(loss=loss, optimizer=optimizer, metrics=[average_acc, ece, balanced_ece], run_eagerly=run_eagerly)
+    model.compile(loss=loss, optimizer=optimizer, metrics=average_acc, run_eagerly=run_eagerly)
     callbacks = get_callbacks(conf)
     
     # train model
@@ -129,7 +119,7 @@ if __name__ == '__main__':
     ch.setFormatter(formatter)
     root.addHandler(ch)
     
-    config = 'mping_070622_config.yml'
+    config = 'config/asos_072022.yml'
     with open(config) as f:
         conf = yaml.load(f, Loader=yaml.FullLoader)
         

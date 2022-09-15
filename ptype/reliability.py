@@ -256,7 +256,7 @@ def reliability_diagrams(results, num_bins=10,
         col = i % ncols
         _reliability_diagram_subplot(ax[row, col], bin_data, draw_ece, 
                                      draw_bin_importance, 
-                                     title="\n".join(plot_name.split()),
+                                     title=plot_name, #"\n".join(plot_name.split()),
                                      xlabel="Confidence" if row == nrows - 1 else "",
                                      ylabel="Expected Accuracy" if col == 0 else "")
 
