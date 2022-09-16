@@ -1,5 +1,7 @@
 import numpy as np
 from numba import jit
+from sklearn.base import BaseEstimator
+from joblib import Parallel, delayed
 
 @jit
 def precip_type_partial_thickness(pressure_profile_hPa, geopotential_height_profile_m,
@@ -36,8 +38,8 @@ def precip_type_partial_thickness(pressure_profile_hPa, geopotential_height_prof
         if thickness_1000_850_m < 1300:
             precip_type[1] = 1
         elif 1300 <= thickness_1000_850_m <= 1320:
-            precip_type[1] = 0.5
-            precip_type[2] = 0.5
+            precip_type[1] = 0.75
+            precip_type[2] = 0.25
         else:
             precip_type[0] = 1
     elif 1540 <= thickness_850_700_m < 1570:
@@ -45,19 +47,19 @@ def precip_type_partial_thickness(pressure_profile_hPa, geopotential_height_prof
             if thickness_850_700_m <= 1545:
                 precip_type[1] = 1
             else:
-                precip_type[1] = 0.5
-                precip_type[2] = 0.5
+                precip_type[1] = 0.75
+                precip_type[2] = 0.25
         elif 1300 <= thickness_1000_850_m <= 1320:
-            precip_type[0] = 0.5
-            precip_type[3] = 0.5
+            precip_type[0] = 0.25
+            precip_type[3] = 0.75
         else:
             precip_type[0] = 1
     elif 1570 <= thickness_850_700_m < 1595:
-        precip_type[0] = 0.5
-        precip_type[3] = 0.5
+        precip_type[0] = 0.25
+        precip_type[3] = 0.75
     elif 1595 <= thickness_850_700_m < 1605:
-        precip_type[2] = 0.5
-        precip_type[3] = 0.5
+        precip_type[2] = 0.25
+        precip_type[3] = 0.75
     else:
         if thickness_1000_850_m < 1310:
             precip_type[2] = 1
@@ -65,8 +67,8 @@ def precip_type_partial_thickness(pressure_profile_hPa, geopotential_height_prof
             precip_type[3] = 1
     if precip_type[1] > 0.5 and temperature_surface > 0:
         precip_type[:] = 0
-        precip_type[1] = 0.5
-        precip_type[0] = 0.5
+        precip_type[1] = 0.25
+        precip_type[0] = 0.75
     if thickness_1000_850_m > 1335 and temperature_surface > -1:
         precip_type[:] = 0
         precip_type[0] = 1
@@ -84,11 +86,11 @@ def precip_type_partial_thickness(pressure_profile_hPa, geopotential_height_prof
         precip_type[2] = 1
     if surface_pressure_hPa > 1000:
         if precip_type[1] == 0.5 and precip_type[2] == 0.5 and temperature_surface < -1:
-            precip_type[2] = 0
-            precip_type[3] = 0.5
+            precip_type[2] = 0.25
+            precip_type[3] = 0.75
         if precip_type[0] == 1 and temperature_surface < -1:
-            precip_type[0] = 0.5
-            precip_type[3] = 0.5
+            precip_type[0] = 0.25
+            precip_type[3] = 0.75
         if thickness_850_700_m > 1600 and thickness_1000_850_m > 1325:
             precip_type[:] = 0
             precip_type[0] = 1
@@ -108,3 +110,55 @@ def thickness_profile(bottom_pressure, top_pressure, pressure_profile, geopotent
     bottom_index = np.argmin(np.abs(pressure_profile - bottom_pressure))
     top_index = np.argmin(np.abs(pressure_profile - top_pressure))
     return geopotential_height_profile[top_index] - geopotential_height_profile[bottom_index]
+
+
+class PartialThicknessClassifier(BaseEstimator):
+    """
+    Scikit-learn formatted PartialThickness classifier
+
+    """
+    def __init__(self,
+                 height_col_name="HGT_{0:d}_m",
+                 temperature_col_name="TMP_{0:d}_C",
+                 surface_pressure_col_name="PRES_ON_SURFACE_Pa",
+                 pressure_levels=np.arange(100, 1025, 25),
+                 n_jobs=1,
+                 verbose=1):
+        self.height_col_name = height_col_name
+        self.temperature_col_name = temperature_col_name
+        self.surface_pressure_col_name = surface_pressure_col_name
+        self.pressure_levels = pressure_levels
+        self.height_cols = [height_col_name.format(p) for p in pressure_levels]
+        self.temperature_cols = [temperature_col_name.format(p) for p in pressure_levels]
+        self.p_type_labels = ["rain", "snow", "ice pellets", "freezing rain"]
+        self.n_jobs = n_jobs
+        self.verbose = verbose
+        return
+
+    def fit(self, x, y):
+        return
+
+    def predict(self, x):
+        p_type_probs = self.predict_proba(x)
+        p_type_index = p_type_probs.argmax(axis=1)
+        return p_type_index
+
+    def predict_proba(self, x):
+        height_data = x[self.height_cols].values
+        temperature_data = x[self.temperature_cols].values
+        surface_pressure_data = x[self.surface_pressure_col_name].values / 100.0
+        p_type_probs = np.zeros((x.shape[0], len(self.p_type_labels)))
+        if self.n_jobs == 1:
+            for i in range(p_type_probs.shape[0]):
+                p_type_probs[i] = precip_type_partial_thickness(self.pressure_levels,
+                                                                height_data[i],
+                                                                temperature_data[i],
+                                                                surface_pressure_data[i])
+        else:
+            p_type_probs[:] = Parallel(n_jobs=self.n_jobs, verbose=self.verbose)(
+                [delayed(precip_type_partial_thickness)(self.pressure_levels,
+                                                        height_data[i],
+                                                        temperature_data[i],
+                                                        surface_pressure_data)
+                 for i in range(p_type_probs.shape[0])])
+        return p_type_probs
