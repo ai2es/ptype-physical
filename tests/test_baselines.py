@@ -1,4 +1,4 @@
-from .baselines import precip_type_partial_thickness
+from ptype.baselines import precip_type_partial_thickness
 import numpy as np
 from metpy.calc import pressure_to_height_std
 from metpy.units import units
