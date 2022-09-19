@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import confusion_matrix
 
-def ptype_hist(df, col, dataset, bins=None, filename=None):
+def ptype_hist(df, col, dataset, model_name, bins=None, filename=None):
     """
     Function to plot a histogram of a specified variable when
     the percent of each ptype is greater than 0.
@@ -27,13 +27,13 @@ def ptype_hist(df, col, dataset, bins=None, filename=None):
             ax.ravel()[p].set_title(f'{dataset} {col} {classes[p]}')
         
     if filename:
-        path = '/glade/u/home/jwillson/winter-ptype/images/'
+        path = f'/glade/u/home/jwillson/winter-ptype/images/{model_name}/'
         plt.savefig(path + filename, dpi=300, bbox_inches="tight")
         
     plt.show()
         
         
-def plot_2d_hist(x, y, bins=None, title=None, xlabel=None, ylabel=None, filename=None):
+def plot_2d_hist(x, y, model_name, bins=None, title=None, xlabel=None, ylabel=None, filename=None):
     """
     Function to plot a 2D histogram of the joint 
     distribution of 2 variables.
@@ -55,12 +55,12 @@ def plot_2d_hist(x, y, bins=None, title=None, xlabel=None, ylabel=None, filename
     ax.grid(True, alpha=0.25)
 
     if filename:
-        path = '/glade/u/home/jwillson/winter-ptype/images/'
+        path = f'/glade/u/home/jwillson/winter-ptype/images/{model_name}/'
         plt.savefig(path + filename, dpi=300, bbox_inches="tight")
     
     plt.show()
     
-def plot_scatter(x, y, title=None, xlabel=None, ylabel=None, filename=None):
+def plot_scatter(x, y, model_name, title=None, xlabel=None, ylabel=None, filename=None):
     fig, ax = plt.subplots(dpi=150)
     ax.scatter(x, y, s=2, c='k')
     if title:
@@ -76,12 +76,12 @@ def plot_scatter(x, y, title=None, xlabel=None, ylabel=None, filename=None):
     ax.grid(True, alpha=0.25)
 
     if filename:
-        path = '/glade/u/home/jwillson/winter-ptype/images/'
+        path = f'/glade/u/home/jwillson/winter-ptype/images/{model_name}/'
         plt.savefig(path + filename, dpi=300, bbox_inches="tight")
     
     plt.show()
         
-def plot_confusion_matrix(y_true, y_pred, classes, normalize=False, title=None, cmap=plt.cm.Blues, filename=None):
+def plot_confusion_matrix(y_true, y_pred, classes, model_name, normalize=False, title=None, cmap=plt.cm.Blues, filename=None):
     """
     Function to plot a confusion matrix. 
     """
@@ -98,14 +98,14 @@ def plot_confusion_matrix(y_true, y_pred, classes, normalize=False, title=None, 
 
     fig, ax = plt.subplots(figsize=(8,8))
     im = ax.imshow(cm, interpolation='nearest', cmap=cmap)
-    ax.figure.colorbar(im, ax=ax)
+    ax.figure.colorbar(im, ax=ax, shrink=0.80)
     ax.set(xticks=np.arange(cm.shape[1]),
            yticks=np.arange(cm.shape[0]))
-    ax.set_xticklabels(classes, fontsize=14)
-    ax.set_yticklabels(classes, fontsize=14)
-    ax.set_title(title, fontsize=18)
-    ax.set_ylabel('True label', fontsize=16)
-    ax.set_xlabel('Predicted label', fontsize=16)
+    ax.set_xticklabels(classes, fontsize=18)
+    ax.set_yticklabels(classes, fontsize=18)
+    ax.set_title(title, fontsize=24)
+    ax.set_ylabel('True label', fontsize=20)
+    ax.set_xlabel('Predicted label', fontsize=20)
     
     fmt = '.2f' if normalize else 'd'
     thresh = cm.max() / 2.
@@ -115,10 +115,10 @@ def plot_confusion_matrix(y_true, y_pred, classes, normalize=False, title=None, 
             ax.text(j, i, format(cm[i, j], fmt),
                     ha="center", va="center",
                     color="white" if cm[i, j] > thresh else "black",
-                   fontsize=14)
+                   fontsize=18)
             
     if filename:
-        path = '/glade/u/home/jwillson/winter-ptype/images/'
+        path = f'/glade/u/home/jwillson/winter-ptype/images/{model_name}/'
         plt.savefig(path + filename, dpi=300, bbox_inches="tight")
         
     return ax
