@@ -1,4 +1,4 @@
-name: ai2es
+name: ptype
 channels:
   - conda-forge
 dependencies:
@@ -25,8 +25,8 @@ dependencies:
   - cython
   - flake8
   - pyarrow
+  - tensorflow
   - pip:
-    - tensorflow
     - tensorflow-probability
     - permutationimportance
     - .
