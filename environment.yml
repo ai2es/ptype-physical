@@ -1,4 +1,4 @@
-name: ai2es
+name: ptype
 channels:
   - conda-forge
 dependencies:
@@ -24,8 +24,10 @@ dependencies:
   - numba
   - cython
   - flake8
+  - requests
+  - tensorflow
+  - tensorflow-probability
+  - metpy
   - pip:
-    - tensorflow
-    - tensorflow-probability
     - permutationimportance
     - .
