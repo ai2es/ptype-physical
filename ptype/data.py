@@ -157,7 +157,7 @@ def load_ptype_data_day(conf, data_split=0, verbose=0):
         size = df.shape[0]
         logger.info("Train, validation, and test fractions:")
         logger.info(
-            f"{train_data.shape[0]}/{size}, {valid_data.shape[0]}/{size}, {test_data.shape[0]}/{size}"
+            f"{train_data.shape[0]/size}, {valid_data.shape[0]/size}, {test_data.shape[0]/size}"
         )
 
     data = {"train": train_data, "val": valid_data, "test": test_data}
