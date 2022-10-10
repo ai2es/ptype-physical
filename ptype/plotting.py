@@ -3,6 +3,9 @@ import matplotlib.cm as cm
 import numpy as np
 import pandas as pd
 from sklearn.metrics import confusion_matrix
+from cartopy import crs as ccrs
+from cartopy import feature as cfeature
+
 
 def ptype_hist(df, col, dataset, model_name, bins=None, filename=None):
     """
@@ -122,3 +125,55 @@ def plot_confusion_matrix(y_true, y_pred, classes, model_name, normalize=False, 
         plt.savefig(path + filename, dpi=300, bbox_inches="tight")
         
     return ax
+
+
+def conus_plot(df, 
+               dataset = "mping", 
+               column = "pred_label", 
+               title = "Predicted", 
+               save_path = False):
+    
+    latN = 54.0
+    latS = 20.0
+    lonW = -63.0
+    lonE = -125.0
+    cLat = (latN + latS)/2
+    cLon = (lonW + lonE )/2
+    colors = {0:'lime', 1:'dodgerblue', 2:'red', 3:'black'}
+
+    proj = ccrs.LambertConformal(central_longitude=cLon, central_latitude=cLat)
+    res = '50m'  # Coarsest and quickest to display; other options are '10m' (slowest) and '50m'.
+    fig = plt.figure(figsize=(18, 12))
+    ax = plt.subplot(1, 1, 1, projection=proj)
+    ax.set_extent([lonW, lonE, latS, latN])
+    ax.add_feature(cfeature.LAND.with_scale(res))
+    ax.add_feature(cfeature.OCEAN.with_scale(res))
+    ax.add_feature(cfeature.COASTLINE.with_scale(res))
+    ax.add_feature(cfeature.LAKES.with_scale(res), alpha=0.5)
+    ax.add_feature(cfeature.STATES.with_scale(res))
+
+    zorder = [1,2,4,3]
+    if dataset == 'ASOS':
+        df['rand_lon'] = [df['lon'].to_numpy()[i]+np.random.normal(scale=scale) for i in range(len(df['lon']))]
+        df['rand_lat'] = [df['lat'].to_numpy()[i]+np.random.normal(scale=scale) for i in range(len(df['lat']))]
+        for i in range(4):
+            ax.scatter(df["rand_lon"][df[column] == i]-360,
+                       df["rand_lat"][df[column] == i],
+                       c=df["true_label"][df[column] == i].map(colors),
+                       s=3, transform=ccrs.PlateCarree(), zorder=zorder[i], alpha = 0.2)
+    else:
+        for i in range(4):
+            ax.scatter(df["lon"][df[column] == i]-360,
+                       df["lat"][df[column] == i],
+                       c=df[column][df[column] == i].map(colors),
+                       s=60, transform=ccrs.PlateCarree(), zorder=zorder[i], alpha = 0.2)
+
+    first_day = str(min(df['datetime'])).split(' ')[0]
+    last_day = str(max(df['datetime'])).split(' ')[0]
+    plt.legend(colors.values(), labels=["Rain", "Snow", "Ice Pellets", "Freezing Rain"], fontsize=24, markerscale=3, loc="lower right")
+    plt.title(f"{dataset} {first_day} to {last_day} {title} Labels", fontsize=30)
+    if save_path is not False:
+        fn = os.path.join(save_path, f'{image_path}_{timeframe}_truelabels.png')
+        plt.savefig(fn, dpi=300, bbox_inches='tight')
+    plt.tight_layout()
+    plt.show()
