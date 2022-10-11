@@ -3,6 +3,8 @@ channels:
   - conda-forge
 dependencies:
   - python=3.8
+  - optuna
+  - pip
   - numpy
   - scipy
   - matplotlib
@@ -14,7 +16,6 @@ dependencies:
   - pyyaml
   - pytest
   - distributed
-  - pip
   - pyproj
   - jupyter
   - jupyterlab
@@ -25,10 +26,12 @@ dependencies:
   - cython
   - flake8
   - requests
-  - tensorflow
-  - tensorflow-probability
   - metpy
   - pip:
+    - pyarrow
+    - fastparquet
+    - tensorflow
+    - tensorflow-probability
     - permutationimportance
     - hagelslag
     - imblearn
