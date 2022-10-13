@@ -14,7 +14,7 @@ optuna:
   study_name: "mlp_optimization"
   storage: "echo.db"
   storage_type: "sqlite"
-  objective: "/glade/work/schreck/repos/ptype-physical/applications/train_classifier_ptype_keras.py"
+  objective: "/glade/work/schreck/repos/ptype-physical/applications/train_classifier_keras.py"
   metric: "val_f1"
   direction: "maximize"
   n_trials: 1000
