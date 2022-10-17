@@ -3,6 +3,7 @@ import random
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from joblib import Parallel, delayed
 from sklearn.preprocessing import StandardScaler, MinMaxScaler,\
                                   OneHotEncoder, LabelEncoder
 
@@ -39,6 +40,41 @@ def load_ptype_data(data_path, source, train_start='20130101', train_end='201811
             dfs.append(pd.read_parquet(os.path.join(data_path, f)))
         data[split] = pd.concat(dfs, ignore_index=True)            
 
+    return data
+
+
+def load_ptype_data_subset(data_path, source, start_date, end_date, n_jobs=1, verbose=1):
+    """
+    Load a single range of dates from the mPING or ASOS parquet files into memory. Supports parallel loading with joblib.
+
+    Args:
+        data_path: Path to appropriate p-type directory containing parquet files.
+        source: "mPING" or "ASOS"
+        start_date: Pandas-supported Date string for first day in time range (inclusive)
+        end_date: Pandas supported Date string for last day in time range (inclusive)
+        n_jobs: Number of parallel processes to use for data loading (default 1)
+        verbose: verbose level
+    Returns:
+        data: Pandas DataFrame containing all sounding and p-type data from start_date to end_date.
+
+    """
+    start_timestamp = pd.Timestamp(start_date)
+    end_timestamp = pd.Timestamp(end_date)
+    data_files = sorted(os.listdir(data_path))
+    all_dates = pd.DatetimeIndex([x[-16:-8] for x in data_files])
+    selected_dates = all_dates[(all_dates >= start_timestamp) & (all_dates <= end_timestamp)]
+    dfs = []
+    if n_jobs == 1:
+        for date in tqdm(selected_dates):
+            date_str = date.strftime("%Y%m%d")
+            filename = f"{source}_rap_{date_str}.parquet"
+            dfs.append(pd.read_parquet(os.path.join(data_path, filename)))
+    else:
+        date_strs = selected_dates.strftime("%Y%m%d")
+        dfs = Parallel(n_jobs=n_jobs, verbose=verbose)(
+            [delayed(pd.read_parquet)(os.path.join(data_path, f"{source}_rap_{date_str}.parquet"))
+             for date_str in date_strs])
+    data = pd.concat(dfs, ignore_index=True)
     return data
 
 def preprocess_data(data, input_features, output_features, scaler_type="standard", encoder_type="onehot"):
