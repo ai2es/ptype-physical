@@ -5,6 +5,7 @@ import pandas as pd
 from sklearn.metrics import confusion_matrix
 from cartopy import crs as ccrs
 from cartopy import feature as cfeature
+import os
 
 
 def ptype_hist(df, col, dataset, model_name, bins=None, filename=None):
@@ -154,8 +155,6 @@ def conus_plot(df,
 
     zorder = [1,2,4,3]
     if dataset == 'ASOS':
-        df['rand_lon'] = [df['lon'].to_numpy()[i]+np.random.normal(scale=scale) for i in range(len(df['lon']))]
-        df['rand_lat'] = [df['lat'].to_numpy()[i]+np.random.normal(scale=scale) for i in range(len(df['lat']))]
         for i in range(4):
             ax.scatter(df["rand_lon"][df[column] == i]-360,
                        df["rand_lat"][df[column] == i],
@@ -173,7 +172,7 @@ def conus_plot(df,
     plt.legend(colors.values(), labels=["Rain", "Snow", "Ice Pellets", "Freezing Rain"], fontsize=24, markerscale=3, loc="lower right")
     plt.title(f"{dataset} {first_day} to {last_day} {title} Labels", fontsize=30)
     if save_path is not False:
-        fn = os.path.join(save_path, f'{image_path}_{timeframe}_truelabels.png')
+        fn = os.path.join(save_path, f'{dataset}_{column}_{first_day}_{last_day}_truelabels.png')
         plt.savefig(fn, dpi=300, bbox_inches='tight')
     plt.tight_layout()
     plt.show()
