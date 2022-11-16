@@ -122,7 +122,11 @@ def __partial_thickness_grid_loop(pressure_hPa, geopotential_height_m,
     precip_type_probs = np.zeros((surface_pressure_hPa.shape[0], surface_pressure_hPa.shape[1], 4))
     for i in range(precip_type_probs.shape[0]):
         for j in range(precip_type_probs.shape[1]):
-            precip_type_probs[i, j] = 
+            precip_type_probs[i, j] = precip_type_partial_thickness(pressure_hPa[:, i, j],
+                                                                    geopotential_height_m[:, i, j],
+                                                                    temperature_C[:, i, j],
+                                                                    surface_pressure_hPa[i, j])
+    return precip_type_probs
 
 class PartialThicknessClassifier(BaseEstimator):
     """
