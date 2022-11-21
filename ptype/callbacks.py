@@ -68,7 +68,7 @@ class MetricsCallback(tf.keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs={}):
         pred_probs = np.asarray(self.model.predict(self.x))
         if self.use_uncertainty:
-            pred_probs, _ = calc_prob_uncertainty(pred_probs)
+            pred_probs, _, _, _ = calc_prob_uncertainty(pred_probs)
             pred_probs = pred_probs.numpy()
         logs[f"{self.name}_csi"] = self.mean_csi(pred_probs)
         true_labels = np.argmax(self.y, 1)
