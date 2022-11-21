@@ -314,7 +314,8 @@ callbacks:
         patience: 15
         mode: "max"
         verbose: 0
-    ReduceLROnPlateau: 
+        restore_best_weights: 1
+    ReduceLROnPlateau:
         monitor: "val_f1"
         factor: 0.1
         patience: 3
