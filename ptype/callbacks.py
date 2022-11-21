@@ -5,8 +5,9 @@ from tensorflow.python.keras.callbacks import (
     CSVLogger,
     EarlyStopping,
 )
+from evml.keras.models import calc_prob_uncertainty
 from tensorflow.python.keras.callbacks import ReduceLROnPlateau
-from sklearn.metrics import precision_recall_fscore_support, balanced_accuracy_score
+from sklearn.metrics import precision_recall_fscore_support, roc_auc_score
 from hagelslag.evaluation.ProbabilityMetrics import DistributedROC
 from typing import List, Dict
 import numpy as np
@@ -53,24 +54,36 @@ class LearningRateTracker(Callback):
 
 
 class MetricsCallback(tf.keras.callbacks.Callback):
-    def __init__(self, x, y, name="val"):
-        super(MetricsCallback, self).__init__()
+    def __init__(self, x, y, name="val", n_bins = 10, use_uncertainty = False, **kwargs):
+        super(MetricsCallback, self).__init__(**kwargs)
         self.x = x
         self.y = y
         self.name = name
+        self.use_uncertainty = use_uncertainty
+        
+        bin_boundaries = np.linspace(0, 1, n_bins + 1)
+        self.bin_lowers = bin_boundaries[:-1]
+        self.bin_uppers = bin_boundaries[1:]
 
     def on_epoch_end(self, epoch, logs={}):
-        y_pred = np.asarray(self.model.predict(self.x))
-        logs[f"{self.name}_csi"] = self.mean_csi(y_pred)
+        pred_probs = np.asarray(self.model.predict(self.x))
+        if self.use_uncertainty:
+            pred_probs, _ = calc_prob_uncertainty(pred_probs)
+            pred_probs = pred_probs.numpy()
+        logs[f"{self.name}_csi"] = self.mean_csi(pred_probs)
         true_labels = np.argmax(self.y, 1)
-        pred_labels = np.argmax(y_pred, 1)
+        pred_labels = np.argmax(pred_probs, 1)
         prec, recall, f1, _ = precision_recall_fscore_support(
-            true_labels, pred_labels, average="macro"
+            true_labels, pred_labels, average="weighted"
         )
-        logs[f"{self.name}_acc"] = balanced_accuracy_score(true_labels, pred_labels)
+        #logs[f"{self.name}_bal_acc"] = balanced_accuracy_score(true_labels, pred_labels)
+        logs[f"{self.name}_ave_acc"] = self.ave_acc(true_labels, pred_labels)
         logs[f"{self.name}_prec"] = prec
         logs[f"{self.name}_recall"] = recall
         logs[f"{self.name}_f1"] = f1
+        logs[f"{self.name}_auc"] = roc_auc_score(self.y, pred_probs, multi_class = 'ovr')
+        #logs[f"{self.name}_mce"] = self.mce(true_labels, pred_probs)
+        #logs[f"{self.name}_ece"] = self.ece(true_labels, pred_probs)
         return
 
     def mean_csi(self, pred_probs):
@@ -86,3 +99,68 @@ class MetricsCallback(tf.keras.callbacks.Callback):
             roc.update(forecasts[:, 0], obs)
             rocs.append(roc.max_csi())
         return np.mean(rocs)
+    
+    def ave_acc(self, true_labels, pred_labels):
+        return np.mean(
+            [
+                (
+                    true_labels[np.where(true_labels == _label)]
+                    == pred_labels[np.where(true_labels == _label)]
+                ).mean()
+                for _label in np.unique(true_labels)
+            ]
+        )
+
+    
+    def mce(self, true_labels, pred_probs):
+        confidences = np.expand_dims(np.max(pred_probs, 1), -1)
+        predictions = np.expand_dims(np.argmax(pred_probs, 1), -1)
+        accuracies = predictions == true_labels
+
+        mce = 0.0
+        for bin_lower, bin_upper in zip(self.bin_lowers, self.bin_uppers):
+            # Calculated |confidence - accuracy| in each bin
+            in_bin = (confidences > bin_lower).astype(float) * (
+                confidences <= bin_upper
+            ).astype(float)
+            prop_in_bin = in_bin.astype(float).mean()
+            in_bin = in_bin.squeeze(-1).astype(int)
+            if prop_in_bin > 0:
+                try:
+                    max_accuracy_in_bin = accuracies[in_bin].astype(float).max()
+                    max_confidence_in_bin = confidences[in_bin].max()
+                    max_calibration = np.abs(max_confidence_in_bin - max_accuracy_in_bin)
+                    mce = max(mce, max_calibration)
+                except:
+                    pass
+        
+        if mce == 0.0:
+            return self.bin_lowers.shape[0]
+        else:
+            return mce
+
+    
+    def ece(self, true_labels, pred_probs):
+        confidences = np.expand_dims(np.max(pred_probs, 1), -1)
+        predictions = np.expand_dims(np.argmax(pred_probs, 1), -1)
+        accuracies = predictions == true_labels
+        ece = []
+        for bin_lower, bin_upper in zip(self.bin_lowers, self.bin_uppers):
+            # Calculated |confidence - accuracy| in each bin
+            in_bin = (confidences > bin_lower).astype(float) * (
+                confidences <= bin_upper
+            ).astype(float)
+            prop_in_bin = in_bin.astype(float).mean()
+            in_bin = in_bin.squeeze(-1).astype(int)
+            if prop_in_bin > 0:
+                try:
+                    accuracy_in_bin = accuracies[in_bin].astype(float).mean()
+                    avg_confidence_in_bin = confidences[in_bin].mean()
+                    avg_calibration = (
+                        np.abs(avg_confidence_in_bin - accuracy_in_bin) * prop_in_bin
+                    )
+                    ece.append(avg_calibration)
+                except:
+                    pass
+        mean = np.mean(ece) if np.isfinite(np.mean(ece)) else self.bin_lowers.shape[0]
+        return mean

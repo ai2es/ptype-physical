@@ -4,7 +4,7 @@ from tensorflow.keras.layers import (
     GaussianNoise,
     LeakyReLU,
 )
-from tensorflow.keras.optimizers import Adam, SGD
+from tensorflow.keras.optimizers.legacy import Adam, SGD
 from tensorflow.keras.regularizers import l1, l2, l1_l2
 import tensorflow as tf
 import numpy as np
@@ -12,6 +12,8 @@ import logging
 
 from imblearn.under_sampling import RandomUnderSampler
 from imblearn.tensorflow import balanced_batch_generator
+from evml.keras.losses import DirichletEvidentialLoss
+from evml.keras.callbacks import ReportEpoch
 
 
 logger = logging.getLogger(__name__)
@@ -53,6 +55,7 @@ class DenseNeuralNetwork(object):
         optimizer="adam",
         loss="categorical_crossentropy",
         loss_weights=None,
+        annealing_coeff=None,
         use_noise=False,
         noise_sd=0.0,
         lr=0.001,
@@ -87,6 +90,7 @@ class DenseNeuralNetwork(object):
         self.epsilon = epsilon
         self.loss = loss
         self.loss_weights = loss_weights
+        self.annealing_coeff = annealing_coeff
         self.lr = lr
         self.kernel_reg = kernel_reg
         self.l1_weight = l1_weight
@@ -167,12 +171,33 @@ class DenseNeuralNetwork(object):
             )
 
         self.model.build((self.batch_size, inputs))
-        self.model.compile(optimizer=self.optimizer_obj, loss=self.loss)
+        self.model.compile(
+            optimizer=self.optimizer_obj,
+            loss=self.loss,
+            #             metrics = ["accuracy",
+            #                tf.keras.metrics.Precision(name="prec"),
+            #                tf.keras.metrics.Recall(name="recall"),
+            #                tfa.metrics.F1Score(num_classes=4,
+            #                                    average='macro', name="f1"),
+            #                tf.keras.metrics.AUC(name = "auc")]
+        )
         # print(self.model.summary())
 
-    def fit(self, x_train, y_train):
+    def fit(self, x_train, y_train, validation_data=None):
+
         inputs = x_train.shape[-1]
         outputs = y_train.shape[-1]
+
+        if self.loss == "dirichlet":
+            for callback in self.callbacks:
+                if isinstance(callback, ReportEpoch):
+                    # weights = np.array(self.loss_weights) if isinstance(self.loss_weights, list) else None
+                    self.loss = DirichletEvidentialLoss(callback=callback, name = self.loss)
+                    break
+            else:
+                raise OSError(
+                    "The ReportEpoch callback needs to be used in order to run the evidential model."
+                )
         self.build_neural_network(inputs, outputs)
         if self.balanced_classes:
             train_idx = np.argmax(y_train, 1)
@@ -186,6 +211,7 @@ class DenseNeuralNetwork(object):
             )
             history = self.model.fit(
                 training_generator,
+                validation_data=validation_data,
                 steps_per_epoch=steps_per_epoch,
                 batch_size=self.batch_size,
                 epochs=self.epochs,
@@ -197,6 +223,7 @@ class DenseNeuralNetwork(object):
             history = self.model.fit(
                 x=x_train,
                 y=y_train,
+                validation_data=validation_data,
                 batch_size=self.batch_size,
                 epochs=self.epochs,
                 verbose=self.verbose,
