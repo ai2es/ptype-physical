@@ -106,7 +106,7 @@ def trainer(conf, evaluate=True, data_seed=0):
     callbacks += get_callbacks(conf)
     mlp = DenseNeuralNetwork(**conf["model"], callbacks=callbacks)
     history = mlp.fit(scaled_data["train_x"], scaled_data["train_y"])
-    mlp.model.save(os.path.join(conf["save_loc"], "best"), save_format='tf')
+    mlp.model.save(os.path.join(conf["save_loc"], "best"))
 
     if evaluate:
         for name in data.keys():
