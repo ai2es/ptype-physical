@@ -1,6 +1,6 @@
 seed: 1000
 verbose: 1
-save_loc: "/glade/work/schreck/repos/ptype-physical/results/echo"
+save_loc: "/glade/work/schreck/repos/ptype-physical/results/evi"
 asos_path: '/glade/p/cisl/aiml/ai2es/winter_ptypes/precip_rap/ASOS_mixture/'
 mping_path: '/glade/p/cisl/aiml/ai2es/winter_ptypes/precip_rap/mPING_mixture/'
 data_path: '/glade/p/cisl/aiml/ai2es/winter_ptypes/precip_rap/mPING_hourafter_interpolated/'
@@ -12,19 +12,20 @@ metric: "val_f1"
 direction: "max"
 
 model:
-    hidden_layers: 2
-    hidden_neurons: 128
+    hidden_layers: 11
+    hidden_neurons: 541
     use_dropout: 1
-    dropout_alpha: 0.2
-    batch_size: 2048
-    lr: 0.001
-    activation: "leaky"
-    output_activation: "softmax"
+    dropout_alpha: 0.217191294429198
+    batch_size: 1289
+    lr: 0.0008707816746166255
+    activation: "elu"
+    output_activation: "linear" #"softmax"
     optimizer: "adam"
-    loss: "categorical_crossentropy"
-    loss_weights: [1., 1., 0.5, 0.5]
+    loss: "dirichlet" #"categorical_crossentropy"
+    annealing_coeff: 50
+    loss_weights: [92.96912671890074, 41.743749696615055, 12.99938921008767, 5.018459330108088]
     balanced_classes: 1
-    l2_weight: 1.0e-06
+    l2_weight: 0.002338643108375605
     epochs: 1000
     
 TEMP_C: [ 
@@ -321,16 +322,16 @@ callbacks:
         mode: "max"
         verbose: 0
     CSVLogger:
-        filename: "training_log.txt"
-        separator: " "
+        filename: "training_log.csv"
+        separator: ","
         append: 0
-    ModelCheckpoint:
-        filepath: "best.hdf5"
-        monitor: "val_f1"
-        save_weights: 1
-        save_best_only: 1
-        mode: "max"
-        verbose: 0
+#     ModelCheckpoint:
+#         filepath: "best"
+#         monitor: "val_f1"
+#         #save_weights: 1
+#         save_best_only: 1
+#         mode: "max"
+#         verbose: 0
     
 case_studies: 
     texas: [
