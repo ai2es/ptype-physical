@@ -1,9 +1,7 @@
 import sys
-import pickle
 import datetime
 from os import listdir, walk, makedirs
-from os.path import join, exists
-import pandas as pd
+from os.path import join
 import numpy as np
 import xarray as xr
 from numba import jit
@@ -160,4 +158,6 @@ def main():
             ds.close()
             ds_h.close()
 
-if __name__ == 
+
+if __name__ == "__main__":
+    main()
