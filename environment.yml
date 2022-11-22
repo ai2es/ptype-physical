@@ -34,4 +34,3 @@ dependencies:
     - hagelslag
     - imblearn
     - git+https://github.com/NCAR/echo-opt
-    - .
