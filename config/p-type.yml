@@ -1,6 +1,6 @@
 seed: 1000
-verbose: 1
-save_loc: "/glade/work/schreck/repos/ptype-physical/results/evi"
+verbose: 0
+save_loc: "/glade/work/schreck/repos/ptype-physical/results/evi/test"
 asos_path: '/glade/p/cisl/aiml/ai2es/winter_ptypes/precip_rap/ASOS_mixture/'
 mping_path: '/glade/p/cisl/aiml/ai2es/winter_ptypes/precip_rap/mPING_mixture/'
 data_path: '/glade/p/cisl/aiml/ai2es/winter_ptypes/precip_rap/mPING_hourafter_interpolated/'
@@ -8,7 +8,7 @@ n_splits: 10
 train_size1: 0.938
 train_size2: 0.885
 ptypes: ['ra_percent', 'sn_percent', 'pl_percent', 'fzra_percent']
-metric: "val_f1"
+metric: "val_loss"
 direction: "max"
 
 model:
@@ -23,10 +23,11 @@ model:
     optimizer: "adam"
     loss: "dirichlet" #"categorical_crossentropy"
     annealing_coeff: 50
-    loss_weights: [92.96912671890074, 41.743749696615055, 12.99938921008767, 5.018459330108088]
-    balanced_classes: 1
+    loss_weights: [0.37939381, 0.96543804, 35.0, 15.0] #[92.96912671890074, 41.743749696615055, 12.99938921008767, 5.018459330108088] #[0.37939381, 0.96543804, 35.0, 15.0]
+    balanced_classes: 0
     l2_weight: 0.002338643108375605
     epochs: 1000
+    verbose: 0
     
 TEMP_C: [ 
     'TEMP_C_0_m',
@@ -311,7 +312,7 @@ VGRD_m/s: [
 callbacks:
     EarlyStopping:
         monitor: "val_f1"
-        patience: 15
+        patience: 9
         mode: "max"
         verbose: 0
         restore_best_weights: 1
