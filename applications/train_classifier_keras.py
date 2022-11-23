@@ -9,7 +9,8 @@ import gc
 import optuna
 import warnings
 import numpy as np
-from keras import backend as K
+from tensorflow.keras import backend as K
+from argparse import ArgumentParser
 
 from ptype.callbacks import get_callbacks, MetricsCallback
 from ptype.models import DenseNeuralNetwork
@@ -144,13 +145,21 @@ def trainer(conf, evaluate=True, data_seed=0):
 
 
 if __name__ == "__main__":
-
-    if len(sys.argv) < 2:
-        print("Usage: python train_classifier_keras.py model.yml")
-        sys.exit()
-
-    config = sys.argv[1]
-    with open(config) as cf:
+    
+    description = "Usage: python train_classifier_keras.py -c model.yml"
+    parser = ArgumentParser(description=description)
+    parser.add_argument(
+        "-c",
+        dest="model_config",
+        type=str,
+        default=False,
+        help="Path to the model configuration (yml) containing your inputs.",
+    )
+    
+    args_dict = vars(parser.parse_args())
+    config_file = args_dict.pop("model_config")
+    
+    with open(config_file) as cf:
         conf = yaml.load(cf, Loader=yaml.FullLoader)
 
     save_loc = conf["save_loc"]

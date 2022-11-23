@@ -188,39 +188,56 @@ def preprocess_data(
     scalers, scaled_data = {}, {}
 
     scalers["input"] = scalar_obs[scaler_type]()
-    scaled_data["train_x"] = pd.DataFrame(
-        scalers["input"].fit_transform(data["train"][input_features]),
-        columns=input_features,
-    )
-    scaled_data["val_x"] = pd.DataFrame(
-        scalers["input"].transform(data["val"][input_features]), columns=input_features
-    )
-    scaled_data["test_x"] = pd.DataFrame(
-        scalers["input"].transform(data["test"][input_features]), columns=input_features
-    )
-
     scalers["output_label"] = LabelEncoder()
-    scaled_data["train_y"] = scalers["output_label"].fit_transform(
-        np.argmax(data["train"][output_features].to_numpy(), 1)
-    )
-    scaled_data["val_y"] = scalers["output_label"].transform(
-        np.argmax(data["val"][output_features].to_numpy(), 1)
-    )
-    scaled_data["test_y"] = scalers["output_label"].transform(
-        np.argmax(data["test"][output_features].to_numpy(), 1)
-    )
-
     if encoder_type == "onehot":
         scalers["output_onehot"] = OneHotEncoder(sparse=False)
-        scaled_data["train_y"] = scalers["output_onehot"].fit_transform(
-            np.expand_dims(scaled_data["train_y"], 1)
+        
+    for split in data.keys():
+        scaled_data[f"{split}_x"] = pd.DataFrame(
+            scalers["input"].fit_transform(data[split][input_features]),
+            columns=input_features,
         )
-        scaled_data["val_y"] = scalers["output_onehot"].transform(
-            np.expand_dims(scaled_data["val_y"], 1)
+        scaled_data[f"{split}_y"] = scalers["output_label"].fit_transform(
+            np.argmax(data[split][output_features].to_numpy(), 1)
         )
-        scaled_data["test_y"] = scalers["output_onehot"].transform(
-            np.expand_dims(scaled_data["test_y"], 1)
-        )
+        if encoder_type == "onehot":
+            scaled_data[f"{split}_y"] = scalers["output_onehot"].fit_transform(
+                np.expand_dims(scaled_data[f"{split}_y"], 1)
+            )
+    
+#     scaled_data["train_x"] = pd.DataFrame(
+#         scalers["input"].fit_transform(data["train"][input_features]),
+#         columns=input_features,
+#     )
+#     scaled_data["val_x"] = pd.DataFrame(
+#         scalers["input"].transform(data["val"][input_features]), columns=input_features
+#     )
+#     scaled_data["test_x"] = pd.DataFrame(
+#         scalers["input"].transform(data["test"][input_features]), columns=input_features
+#     )
+
+#     scalers["output_label"] = LabelEncoder()
+#     scaled_data["train_y"] = scalers["output_label"].fit_transform(
+#         np.argmax(data["train"][output_features].to_numpy(), 1)
+#     )
+#     scaled_data["val_y"] = scalers["output_label"].transform(
+#         np.argmax(data["val"][output_features].to_numpy(), 1)
+#     )
+#     scaled_data["test_y"] = scalers["output_label"].transform(
+#         np.argmax(data["test"][output_features].to_numpy(), 1)
+#     )
+
+#     if encoder_type == "onehot":
+#         scalers["output_onehot"] = OneHotEncoder(sparse=False)
+#         scaled_data["train_y"] = scalers["output_onehot"].fit_transform(
+#             np.expand_dims(scaled_data["train_y"], 1)
+#         )
+#         scaled_data["val_y"] = scalers["output_onehot"].transform(
+#             np.expand_dims(scaled_data["val_y"], 1)
+#         )
+#         scaled_data["test_y"] = scalers["output_onehot"].transform(
+#             np.expand_dims(scaled_data["test_y"], 1)
+#         )
 
     return scaled_data, scalers
 

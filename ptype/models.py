@@ -9,6 +9,7 @@ from tensorflow.keras.regularizers import l1, l2, l1_l2
 import tensorflow as tf
 import numpy as np
 import logging
+import sys
 
 from imblearn.under_sampling import RandomUnderSampler
 from imblearn.tensorflow import balanced_batch_generator
@@ -173,7 +174,7 @@ class DenseNeuralNetwork(object):
         self.model.build((self.batch_size, inputs))
         self.model.compile(
             optimizer=self.optimizer_obj,
-            loss=self.loss,
+            loss=self.loss
             #             metrics = ["accuracy",
             #                tf.keras.metrics.Precision(name="prec"),
             #                tf.keras.metrics.Recall(name="recall"),
@@ -191,8 +192,10 @@ class DenseNeuralNetwork(object):
         if self.loss == "dirichlet":
             for callback in self.callbacks:
                 if isinstance(callback, ReportEpoch):
-                    # weights = np.array(self.loss_weights) if isinstance(self.loss_weights, list) else None
-                    self.loss = DirichletEvidentialLoss(callback=callback, name = self.loss)
+                    # Don't use weights within Dirichelt, it is done below using sample weight
+                    self.loss = DirichletEvidentialLoss(
+                        callback=callback, name=self.loss
+                    )
                     break
             else:
                 raise OSError(
@@ -220,6 +223,7 @@ class DenseNeuralNetwork(object):
                 shuffle=True,
             )
         else:
+            sample_weight = np.array([self.loss_weights[np.argmax(_)] for _ in y_train])
             history = self.model.fit(
                 x=x_train,
                 y=y_train,
@@ -228,15 +232,36 @@ class DenseNeuralNetwork(object):
                 epochs=self.epochs,
                 verbose=self.verbose,
                 callbacks=self.callbacks,
-                class_weight={k: v for k, v in enumerate(self.loss_weights)},
+                sample_weight=sample_weight,
+                # class_weight={k: v for k, v in enumerate(self.loss_weights)},
                 shuffle=True,
             )
         return history
 
     def predict(self, x):
-        y_prob = self.model.predict(x, batch_size=self.batch_size)
+        y_prob = self.model.predict(x, batch_size=self.batch_size, verbose=self.verbose)
         return y_prob
 
+    def predict_dropout(self, x, mc_forward_passes=10):
+        y_prob = np.stack(
+            [
+                self.model(tf.expand_dims(x, axis=-1), training=True)
+                for _ in range(mc_forward_passes)
+            ]
+        )
+        pred_probs = y_prob.mean(axis=0)
+        epistemic_variance = y_prob.var(axis=0)
+        # Calculating entropy across multiple MCD forward passes
+        epsilon = sys.float_info.min
+        entropy = -np.sum(
+            pred_probs * np.log(pred_probs + epsilon), axis=-1
+        )  # shape (n_samples,)
+        # Calculating mutual information across multiple MCD forward passes
+        mutual_info = entropy - np.mean(
+            np.sum(-y_prob * np.log(y_prob + epsilon), axis=-1), axis=0
+        )  # shape (n_samples,)
+        return pred_probs, epistemic_variance, entropy, mutual_info
+
     def predict_proba(self, x):
-        y_prob = self.model.predict(x, batch_size=self.batch_size)
+        y_prob = self.model.predict(x, batch_size=self.batch_size, verbose=self.verbose)
         return y_prob
