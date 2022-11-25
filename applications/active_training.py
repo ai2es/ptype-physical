@@ -1,7 +1,10 @@
 import os
+import sys
 import tqdm
 import yaml
 import shutil
+import logging
+import subprocess
 import numpy as np
 import pandas as pd
 
@@ -22,6 +25,43 @@ import warnings
 
 warnings.filterwarnings("always")
 pd.options.mode.chained_assignment = None
+
+
+def launch_pbs_jobs(nodes,
+                    save_path="./", 
+                    policy="mc-dropout", 
+                    iterations=20, 
+                    mc_steps=100):
+    
+    parent = "/glade/work/schreck/repos/ptype-physical/applications/"
+    for worker in range(nodes):
+        script = f"""
+        #!/bin/bash -l
+        #PBS -N {policy}-{worker}
+        #PBS -l select=1:ncpus=8:ngpus=1:mem=128GB
+        #PBS -l walltime=12:00:00
+        #PBS -l gpu_type=v100
+        #PBS -A NAML0001
+        #PBS -q casper
+        #PBS -o {os.path.join(save_path, "out")}
+        #PBS -e {os.path.join(save_path, "out")}
+
+        source ~/.bashrc
+        conda activate ptype
+        python {parent}/active_training.py -c model.yml -p {policy} -i {iterations} -s {mc_steps} -n {nodes} -w {worker}
+        """
+        with open("launcher.sh", "w") as fid:
+            fid.write(script)
+        jobid = subprocess.Popen(
+            "qsub launcher.sh",
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        ).communicate()[0]
+        jobid = jobid.decode("utf-8").strip("\n")
+        print(jobid)
+
+    os.remove("launcher.sh")
 
 
 def train(conf, data, mc_forward_passes=0):
@@ -118,7 +158,7 @@ if __name__ == "__main__":
         help="Number of MC iterations to use with policy = mc-dropout",
     )
     parser.add_argument(
-        "-n",
+        "-i",
         dest="iterations",
         type=int,
         default=20,
@@ -138,6 +178,13 @@ if __name__ == "__main__":
         default=1,
         help="The total number of nodes (GPUs, 1 model per GPU).",
     )
+    parser.add_argument(
+        "-l",
+        dest="launch",
+        type=int,
+        default=0,
+        help="Submit {nodes} workers to PBS. Run -m option once all workers finish.",
+    )
 
     args_dict = vars(parser.parse_args())
     config_file = args_dict.pop("model_config")
@@ -146,6 +193,7 @@ if __name__ == "__main__":
     worker = int(args_dict.pop("worker"))
     nodes = int(args_dict.pop("nodes"))
     steps = int(args_dict.pop("steps"))
+    launch = bool(int(args_dict.pop("launch")))
 
     with open(config_file) as cf:
         conf = yaml.load(cf, Loader=yaml.FullLoader)
@@ -159,6 +207,11 @@ if __name__ == "__main__":
     else:
         with open(os.path.join(save_loc, "model.yml"), "w") as fid:
             yaml.dump(conf, fid)
+
+    if launch:
+        logging.info(f"Launching {nodes} workers to PBS")
+        launch_pbs_jobs(nodes, conf["save_loc"], policy, num_iterations, steps)
+        sys.exit()
 
     # seed_everything(seed)
     # Load the data
@@ -175,7 +228,7 @@ if __name__ == "__main__":
     data_splits = list(range(conf["n_splits"]))
     if nodes > 1:
         data_splits = np.array_split(data_splits, nodes)[worker]
-        
+
     for sidx in data_splits:
 
         my_iter = tqdm.tqdm(range(num_iterations), total=num_iterations, leave=True)
@@ -205,13 +258,11 @@ if __name__ == "__main__":
                         selection = left_overs.iloc[:num_selected].copy()
                     # Add to the training data and determine whats left over for the next iteration
                     train_data_ = pd.concat([train_data_, selection])
-                
+
                 left_overs = np.array(
                     list(set(data["train"]["id"]) - set(train_data_["id"]))
                 )
-                left_overs = data["train"][
-                    data["train"]["id"].isin(left_overs)
-                ].copy()
+                left_overs = data["train"][data["train"]["id"].isin(left_overs)].copy()
                 if left_overs.shape[0] == 0:
                     break
             # Split the available training data into train/validation split

@@ -3,7 +3,6 @@ from echo.src.base_objective import BaseObjective
 from echo.src.trial_suggest import trial_suggest_loader
 import yaml
 import shutil
-import sys
 import os
 import gc
 import optuna
@@ -43,7 +42,7 @@ class Objective(BaseObjective):
         try:
             return {self.metric: trainer(conf, evaluate=False)}
         except Exception as E:
-            if "Unexpected result" in str(E):
+            if "Unexpected result" in str(E) or "CUDA" in str(E):
                 logger.warning(
                     f"Pruning trial {trial.number} due to unspecified error: {str(E)}."
                 )
@@ -129,10 +128,12 @@ def trainer(conf, evaluate=True, data_seed=0):
                 data[name][f"pred_conf{k+1}"] = pred_probs[:, k]
             if use_uncertainty:
                 data[name]["evidential"] = u
-                data[name]['aleatoric'] =  np.take_along_axis(
-                    ale, pred_labels[:, None], axis=1)
-                data[name]['epistemic'] =  np.take_along_axis(
-                    epi, pred_labels[:, None], axis=1)
+                data[name]["aleatoric"] = np.take_along_axis(
+                    ale, pred_labels[:, None], axis=1
+                )
+                data[name]["epistemic"] = np.take_along_axis(
+                    epi, pred_labels[:, None], axis=1
+                )
             data[name].to_parquet(
                 os.path.join(conf["save_loc"], f"{name}_{data_seed}.parquet")
             )
@@ -145,7 +146,7 @@ def trainer(conf, evaluate=True, data_seed=0):
 
 
 if __name__ == "__main__":
-    
+
     description = "Usage: python train_classifier_keras.py -c model.yml"
     parser = ArgumentParser(description=description)
     parser.add_argument(
@@ -155,10 +156,10 @@ if __name__ == "__main__":
         default=False,
         help="Path to the model configuration (yml) containing your inputs.",
     )
-    
+
     args_dict = vars(parser.parse_args())
     config_file = args_dict.pop("model_config")
-    
+
     with open(config_file) as cf:
         conf = yaml.load(cf, Loader=yaml.FullLoader)
 
@@ -166,7 +167,7 @@ if __name__ == "__main__":
     os.makedirs(save_loc, exist_ok=True)
 
     if not os.path.isfile(os.path.join(save_loc, "model.yml")):
-        shutil.copyfile(config, os.path.join(save_loc, "model.yml"))
+        shutil.copyfile(config_file, os.path.join(save_loc, "model.yml"))
     else:
         with open(os.path.join(save_loc, "model.yml"), "w") as fid:
             yaml.dump(conf, fid)
