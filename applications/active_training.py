@@ -1,4 +1,5 @@
 import os
+import gc
 import sys
 import tqdm
 import yaml
@@ -20,6 +21,8 @@ from argparse import ArgumentParser
 from sklearn.model_selection import GroupShuffleSplit
 from sklearn.metrics import roc_auc_score, balanced_accuracy_score
 from sklearn.metrics import precision_recall_fscore_support
+
+import tensorflow as tf
 
 import warnings
 
@@ -129,6 +132,11 @@ def train(conf, data, mc_forward_passes=0):
 
     results_dict = {d: pd.DataFrame.from_dict(v) for d, v in results_dict.items()}
     training_log = pd.DataFrame.from_dict(history.history)
+    
+    del mlp
+    tf.keras.backend.clear_session()
+    gc.collect()
+    
     return training_log, results_dict
 
 

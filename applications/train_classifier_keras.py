@@ -38,7 +38,8 @@ class Objective(BaseObjective):
             del conf["callbacks"]["CSVLogger"]
         if "ModelCheckpoint" in conf["callbacks"]:
             del conf["callbacks"]["ModelCheckpoint"]
-        conf = self.custom_updates(trial, conf)
+        if "rain_weight" in conf["optuna"]["parameters"]:
+            conf = self.custom_updates(trial, conf)
         try:
             return {self.metric: trainer(conf, evaluate=False)}
         except Exception as E:
@@ -92,6 +93,14 @@ def trainer(conf, evaluate=True, data_seed=0):
                 scaled_data["train_x"],
                 scaled_data["train_y"],
                 name="train",
+                use_uncertainty=use_uncertainty,
+            )
+        )
+        callbacks.append(
+            MetricsCallback(
+                scaled_data["test_x"],
+                scaled_data["test_y"],
+                name="test",
                 use_uncertainty=use_uncertainty,
             )
         )
