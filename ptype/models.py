@@ -77,6 +77,7 @@ class DenseNeuralNetwork(object):
         random_state=1000,
         callbacks=[],
         balanced_classes=0,
+        steps_per_epoch=0,
     ):
 
         self.hidden_layers = hidden_layers
@@ -110,6 +111,7 @@ class DenseNeuralNetwork(object):
         self.model = None
         self.random_state = random_state
         self.balanced_classes = balanced_classes
+        self.steps_per_epoch = steps_per_epoch
 
     def build_neural_network(self, inputs, outputs):
         """
@@ -224,6 +226,8 @@ class DenseNeuralNetwork(object):
             )
         else:
             sample_weight = np.array([self.loss_weights[np.argmax(_)] for _ in y_train])
+            if not self.steps_per_epoch:
+                self.steps_per_epoch = sample_weight.shape[0] // self.batch_size
             history = self.model.fit(
                 x=x_train,
                 y=y_train,
@@ -233,6 +237,7 @@ class DenseNeuralNetwork(object):
                 verbose=self.verbose,
                 callbacks=self.callbacks,
                 sample_weight=sample_weight,
+                steps_per_epoch=self.steps_per_epoch,
                 # class_weight={k: v for k, v in enumerate(self.loss_weights)},
                 shuffle=True,
             )
@@ -245,7 +250,12 @@ class DenseNeuralNetwork(object):
     def predict_dropout(self, x, mc_forward_passes=10):
         y_prob = np.stack(
             [
-                self.model(tf.expand_dims(x, axis=-1), training=True)
+                np.vstack(
+                    [
+                        self.model(tf.expand_dims(lx, axis=-1), training=True)
+                        for lx in np.array_split(x, x.shape[0] // self.batch_size)
+                    ]
+                )
                 for _ in range(mc_forward_passes)
             ]
         )
