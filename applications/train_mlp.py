@@ -115,7 +115,7 @@ def trainer(conf, evaluate=True, data_seed=0):
     callbacks += get_callbacks(conf)
     mlp = DenseNeuralNetwork(**conf["model"], callbacks=callbacks)
     history = mlp.fit(scaled_data["train_x"], scaled_data["train_y"])
-    mlp.model.save(os.path.join(conf["save_loc"], "best"))
+    mlp.model.save(os.path.join(conf["save_loc"], "model"))
 
     if evaluate:
         for name in data.keys():
@@ -143,9 +143,7 @@ def trainer(conf, evaluate=True, data_seed=0):
                 data[name]["epistemic"] = np.take_along_axis(
                     epi, pred_labels[:, None], axis=1
                 )
-            data[name].to_parquet(
-                os.path.join(conf["save_loc"], f"{name}_{data_seed}.parquet")
-            )
+            data[name].to_parquet(os.path.join(conf["save_loc"], f"{name}.parquet"))
         return 1
 
     elif conf["direction"] == "max":  # Return metric to be used in ECHO
@@ -156,7 +154,7 @@ def trainer(conf, evaluate=True, data_seed=0):
 
 if __name__ == "__main__":
 
-    description = "Usage: python train_classifier_keras.py -c model.yml"
+    description = "Usage: python train_mlp.py -c model.yml"
     parser = ArgumentParser(description=description)
     parser.add_argument(
         "-c",
