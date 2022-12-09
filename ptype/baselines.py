@@ -112,17 +112,21 @@ def thickness_profile(bottom_pressure, top_pressure, pressure_profile, geopotent
     return geopotential_height_profile[top_index] - geopotential_height_profile[bottom_index]
 
 
-def partial_thickness_full_grid(rap_ds):
-        
-    return
+def partial_thickness_full_grid_single_time(rap_ds):
+    pressure_hPa = rap_ds["press"].values
+    geopotential_height_m = rap_ds["HGT"][0].values
+    temperature_C = rap_ds["TMP"][0].values - 273.15
+    surface_pressure_hPa = rap_ds["PRES_ON_SURFACE"][0].values / 100.0
+    precip_type_probs = _partial_thickness_grid_loop(pressure_hPa, geopotential_height_m, temperature_C, surface_pressure_hPa)
+    return precip_type_probs
 
 @jit
-def __partial_thickness_grid_loop(pressure_hPa, geopotential_height_m, 
+def _partial_thickness_grid_loop(pressure_hPa, geopotential_height_m,
                                   temperature_C, surface_pressure_hPa):
     precip_type_probs = np.zeros((surface_pressure_hPa.shape[0], surface_pressure_hPa.shape[1], 4))
     for i in range(precip_type_probs.shape[0]):
         for j in range(precip_type_probs.shape[1]):
-            precip_type_probs[i, j] = precip_type_partial_thickness(pressure_hPa[:, i, j],
+            precip_type_probs[i, j] = precip_type_partial_thickness(pressure_hPa,
                                                                     geopotential_height_m[:, i, j],
                                                                     temperature_C[:, i, j],
                                                                     surface_pressure_hPa[i, j])
