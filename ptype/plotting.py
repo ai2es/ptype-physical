@@ -10,7 +10,7 @@ from matplotlib.animation import FuncAnimation
 import matplotlib.animation as animation
 
 
-def ptype_hist(df, col, dataset, model_name, bins=None, filename=None):
+def ptype_hist(df, col, dataset, model_name, bins=None, save_location=None):
     """
     Function to plot a histogram of a specified variable when
     the percent of each ptype is greater than 0.
@@ -32,15 +32,21 @@ def ptype_hist(df, col, dataset, model_name, bins=None, filename=None):
             ax.ravel()[p].hist(ptype, bins=bins, density=True)
             ax.ravel()[p].set_title(f"{dataset} {col} {classes[p]}")
 
-    if filename:
-        path = f"/glade/u/home/jwillson/winter-ptype/images/{model_name}/"
-        plt.savefig(path + filename, dpi=300, bbox_inches="tight")
+    if save_location:
+        plt.savefig(save_location, dpi=300, bbox_inches="tight")
 
     plt.show()
 
 
 def plot_2d_hist(
-    x, y, model_name, bins=None, title=None, xlabel=None, ylabel=None, filename=None
+    x,
+    y,
+    model_name,
+    bins=None,
+    title=None,
+    xlabel=None,
+    ylabel=None,
+    save_location=None,
 ):
     """
     Function to plot a 2D histogram of the joint
@@ -62,14 +68,15 @@ def plot_2d_hist(
     plt.colorbar(cm.ScalarMappable(cmap=cmap))
     ax.grid(True, alpha=0.25)
 
-    if filename:
-        path = f"/glade/u/home/jwillson/winter-ptype/images/{model_name}/"
-        plt.savefig(path + filename, dpi=300, bbox_inches="tight")
+    if save_location:
+        plt.savefig(save_location, dpi=300, bbox_inches="tight")
 
     plt.show()
 
 
-def plot_scatter(x, y, model_name, title=None, xlabel=None, ylabel=None, filename=None):
+def plot_scatter(
+    x, y, model_name, title=None, xlabel=None, ylabel=None, save_location=None
+):
     fig, ax = plt.subplots(dpi=150)
     ax.scatter(x, y, s=2, c="k")
     if title:
@@ -84,9 +91,8 @@ def plot_scatter(x, y, model_name, title=None, xlabel=None, ylabel=None, filenam
     ax.plot(x1, y1, "-b")
     ax.grid(True, alpha=0.25)
 
-    if filename:
-        path = f"/glade/u/home/jwillson/winter-ptype/images/{model_name}/"
-        plt.savefig(path + filename, dpi=300, bbox_inches="tight")
+    if save_location:
+        plt.savefig(save_location, dpi=300, bbox_inches="tight")
 
     plt.show()
 
@@ -312,7 +318,7 @@ def labels_video(
         ax.add_feature(cfeature.LAKES.with_scale(res), alpha=0.5)
         ax.add_feature(cfeature.STATES.with_scale(res))
 
-        case_ids = case[k:(k + 1)]
+        case_ids = case[k : (k + 1)]
         CCC = test_data["day"].isin(case_ids)
         df = test_data[CCC].copy()
         if dataset == "ASOS":
@@ -390,7 +396,7 @@ def video(
         ax.add_feature(cfeature.COASTLINE.with_scale(res))
         ax.add_feature(cfeature.LAKES.with_scale(res), alpha=0.5)
         ax.add_feature(cfeature.STATES.with_scale(res))
-        case_ids = case[k:(k + 1)]
+        case_ids = case[k : (k + 1)]
         CCC = test_data["day"].isin(case_ids)
         df = test_data[CCC].copy()
         for i in range(4):
