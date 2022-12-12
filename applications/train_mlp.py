@@ -6,6 +6,7 @@ import shutil
 import os
 import gc
 import optuna
+import pickle
 import warnings
 import numpy as np
 from tensorflow.keras import backend as K
@@ -17,6 +18,7 @@ from ptype.data import load_ptype_data_day, preprocess_data
 
 from evml.keras.callbacks import ReportEpoch
 from evml.keras.models import calc_prob_uncertainty
+from bridgescaler import save_scaler
 
 
 warnings.filterwarnings("ignore")
@@ -72,18 +74,41 @@ def trainer(conf, evaluate=True, data_seed=0):
     )
     output_features = conf["ptypes"]
     metric = conf["metric"]
+    # flag for using the evidential model
+    if conf["model"]["loss"] == "dirichlet":
+        use_uncertainty = True
+    else:
+        use_uncertainty = False
     data = load_ptype_data_day(conf, data_split=0, verbose=1)
+    # check if we should scale the input data by groups
+    scale_groups = [] if "scale_groups" not in conf else conf["scale_groups"]
+    groups = [conf[g] for g in scale_groups]
+    leftovers = list(
+        set(input_features)
+        - set([row for group in scale_groups for row in conf[group]])
+    )
+    if len(leftovers):
+        groups.append(leftovers)
+    # scale the data
     scaled_data, scalers = preprocess_data(
         data,
         input_features,
         output_features,
         scaler_type="standard",
         encoder_type="onehot",
+        groups=groups,
     )
-    if conf["model"]["loss"] == "dirichlet":
-        use_uncertainty = True
-    else:
-        use_uncertainty = False
+    # Save the scalers when not using ECHO
+    if evaluate:
+        os.makedirs(os.path.join(conf["save_loc"], "scalers"), exist_ok=True)
+        for scaler_name, scaler in scalers.items():
+            fn = os.path.join(conf["save_loc"], "scalers", f"{scaler_name}.json")
+            try:
+                save_scaler(scaler, fn)
+            except TypeError:
+                with open(fn, "wb") as fid:
+                    pickle.dump(scaler, fid)
+    # set up callbacks
     callbacks = []
     if use_uncertainty:
         callbacks.append(ReportEpoch(conf["model"]["annealing_coeff"]))
@@ -113,11 +138,14 @@ def trainer(conf, evaluate=True, data_seed=0):
         )
     )
     callbacks += get_callbacks(conf)
+    # initialize the model
     mlp = DenseNeuralNetwork(**conf["model"], callbacks=callbacks)
+    # train the model
     history = mlp.fit(scaled_data["train_x"], scaled_data["train_y"])
-    mlp.model.save(os.path.join(conf["save_loc"], "model"))
-
+    # Predict on the data splits
     if evaluate:
+        # Save the best model when not using ECHO
+        mlp.model.save(os.path.join(conf["save_loc"], "model"))
         for name in data.keys():
             x = scaled_data[f"{name}_x"]
             pred_probs = mlp.predict(x)

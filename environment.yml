@@ -34,5 +34,6 @@ dependencies:
     - tensorflow-probability
     - hagelslag
     - imblearn
+    - git+https://github.com/NCAR/bridgescaler
     - git+https://github.com/NCAR/echo-opt
     - .

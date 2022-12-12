@@ -30,13 +30,13 @@ warnings.filterwarnings("always")
 pd.options.mode.chained_assignment = None
 
 
-def launch_pbs_jobs(nodes,
-                    save_path="./", 
-                    policy="mc-dropout", 
-                    iterations=20, 
-                    mc_steps=100):
-    
-    parent = "/glade/work/schreck/repos/ptype-physical/applications/"
+def launch_pbs_jobs(
+    nodes, save_path="./", policy="mc-dropout", iterations=20, mc_steps=100
+):
+
+    parent = os.path.dirname(
+        os.path.abspath(__file__)
+    )
     for worker in range(nodes):
         script = f"""
         #!/bin/bash -l
@@ -132,11 +132,11 @@ def train(conf, data, mc_forward_passes=0):
 
     results_dict = {d: pd.DataFrame.from_dict(v) for d, v in results_dict.items()}
     training_log = pd.DataFrame.from_dict(history.history)
-    
+
     del mlp
     tf.keras.backend.clear_session()
     gc.collect()
-    
+
     return training_log, results_dict
 
 
@@ -232,6 +232,17 @@ if __name__ == "__main__":
     data["train"] = pd.concat([data["train"], data["val"]])
     del data["val"]
 
+    # check if we should scale the input data by groups
+    scale_groups = [] if "scale_groups" not in conf else conf["scale_groups"]
+    groups = [conf[g] for g in scale_groups]
+    ungrouped = list(
+        set(input_features)
+        - set([row for group in scale_groups for row in conf[group]])
+    )
+    if len(ungrouped):
+        groups.append(ungrouped)
+
+    # set up data splits / iteration loops
     num_selected = int((1.0 / num_iterations) * data["train"].shape[0])
     data_splits = list(range(conf["n_splits"]))
     if nodes > 1:
@@ -300,7 +311,9 @@ if __name__ == "__main__":
                 output_features,
                 scaler_type="standard",
                 encoder_type="onehot",
+                groups=groups,
             )
+
             # Train model and predict on holdouts
             if policy in ["mc-dropout", "entropy", "mutual-info"]:
                 training_log, pred_df = train(
@@ -308,6 +321,7 @@ if __name__ == "__main__":
                 )
             else:
                 training_log, pred_df = train(conf, scaled_data)
+
             # Save data
             if policy in pred_df["left_overs"]:
                 left_overs[policy] = pred_df["left_overs"][policy]
@@ -317,6 +331,7 @@ if __name__ == "__main__":
             print_str = f"Iteration {iteration}"
             active_results["iteration"].append(iteration)
             active_results["ensemble"].append(sidx)
+
             # Compute some metrics
             for name in pred_df.keys():
                 true_labels = pred_df[name]["true_label"]
