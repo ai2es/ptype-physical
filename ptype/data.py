@@ -217,6 +217,10 @@ def preprocess_data(
     scaled_data["test_x"] = pd.DataFrame(
         scalers["input"].transform(data["test"][input_features]), columns=input_features
     )
+    if "left_overs" in data:
+        scaled_data["left_overs_x"] = pd.DataFrame(
+        scalers["input"].transform(data["left_overs"][input_features]), columns=input_features
+    )
 
     scalers["output_label"] = LabelEncoder()
     scaled_data["train_y"] = scalers["output_label"].fit_transform(
@@ -228,6 +232,10 @@ def preprocess_data(
     scaled_data["test_y"] = scalers["output_label"].transform(
         np.argmax(data["test"][output_features].to_numpy(), 1)
     )
+    if "left_overs" in data:
+        scaled_data["left_overs_y"] = scalers["output_label"].transform(
+            np.argmax(data["left_overs"][output_features].to_numpy(), 1)
+        )
 
     if encoder_type == "onehot":
         scalers["output_onehot"] = OneHotEncoder(sparse=False)
@@ -240,7 +248,11 @@ def preprocess_data(
         scaled_data["test_y"] = scalers["output_onehot"].transform(
             np.expand_dims(scaled_data["test_y"], 1)
         )
-
+        if "left_overs" in data:
+            scaled_data["left_overs_y"] = scalers["output_onehot"].transform(
+                np.expand_dims(scaled_data["left_overs_y"], 1)
+            )
+        
     return scaled_data, scalers
 
 
