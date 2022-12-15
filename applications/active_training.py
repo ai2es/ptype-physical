@@ -11,6 +11,7 @@ import pandas as pd
 
 from ptype.callbacks import get_callbacks, MetricsCallback
 from ptype.models import DenseNeuralNetwork
+from pathlib import Path
 from ptype.data import load_ptype_data_day, preprocess_data
 
 from evml.keras.callbacks import ReportEpoch
@@ -28,43 +29,6 @@ import warnings
 
 warnings.filterwarnings("always")
 pd.options.mode.chained_assignment = None
-
-
-def launch_pbs_jobs(
-    nodes, save_path="./", policy="mc-dropout", iterations=20, mc_steps=100
-):
-
-    parent = os.path.dirname(
-        os.path.abspath(__file__)
-    )
-    for worker in range(nodes):
-        script = f"""
-        #!/bin/bash -l
-        #PBS -N {policy}-{worker}
-        #PBS -l select=1:ncpus=8:ngpus=1:mem=128GB
-        #PBS -l walltime=12:00:00
-        #PBS -l gpu_type=v100
-        #PBS -A NAML0001
-        #PBS -q casper
-        #PBS -o {os.path.join(save_path, "out")}
-        #PBS -e {os.path.join(save_path, "out")}
-
-        source ~/.bashrc
-        conda activate ptype
-        python {parent}/active_training.py -c model.yml -p {policy} -i {iterations} -s {mc_steps} -n {nodes} -w {worker}
-        """
-        with open("launcher.sh", "w") as fid:
-            fid.write(script)
-        jobid = subprocess.Popen(
-            "qsub launcher.sh",
-            shell=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        ).communicate()[0]
-        jobid = jobid.decode("utf-8").strip("\n")
-        print(jobid)
-
-    os.remove("launcher.sh")
 
 
 def train(conf, data, mc_forward_passes=0):
@@ -140,6 +104,55 @@ def train(conf, data, mc_forward_passes=0):
     return training_log, results_dict
 
 
+def launch_pbs_jobs(
+    config,
+    nodes,
+    gpu=1,
+    save_path="./",
+    policy="mc-dropout",
+    iterations=20,
+    mc_steps=100,
+    cpus=8,
+    mem=128,
+    walltime="12:00:00",
+):
+
+    script_path = Path(__file__).absolute()
+    if gpu > 0:
+        args = f"""#PBS -l select=1:ncpus={cpus}:ngpus={gpu}:mem={mem}GB
+        #PBS -l gpu_type=v100"""
+    else:
+        args = f"#PBS -l select=1:ncpus={cpus}:mem={mem}GB"
+
+    for worker in range(nodes):
+        script = f"""
+        #!/bin/bash -l
+        #PBS -N {policy}-{worker}
+        {args}
+        #PBS -l walltime={walltime}
+        #PBS -A NAML0001
+        #PBS -q casper
+        #PBS -o {os.path.join(save_path, "out")}
+        #PBS -e {os.path.join(save_path, "out")}
+
+        source ~/.bashrc
+        conda activate ptype
+        python {script_path} -c {config} -p {policy} -i {iterations} -s {mc_steps} -n {nodes} -w {worker}
+        """
+        with open("launcher.sh", "w") as fid:
+            fid.write(script)
+        jobid = subprocess.Popen(
+            "qsub launcher.sh",
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        ).communicate()[0]
+        jobid = jobid.decode("utf-8").strip("\n")
+        print(jobid)
+
+    os.remove("launcher.sh")
+
+
 if __name__ == "__main__":
 
     description = "Run active training on p-type data sets. "
@@ -187,11 +200,39 @@ if __name__ == "__main__":
         help="The total number of nodes (GPUs, 1 model per GPU).",
     )
     parser.add_argument(
+        "-g",
+        dest="gpu",
+        type=int,
+        default=1,
+        help="Use a GPU to train the model (boolean). Default = 1",
+    )
+    parser.add_argument(
         "-l",
         dest="launch",
         type=int,
         default=0,
         help="Submit {nodes} workers to PBS. Run -m option once all workers finish.",
+    )
+    parser.add_argument(
+        "-cpu",
+        dest="cpu",
+        type=int,
+        default=8,
+        help="Number of CPU cores to request from PBS. Default = 8",
+    )
+    parser.add_argument(
+        "-mem",
+        dest="mem",
+        type=int,
+        default=128,
+        help="Number of GBS of RAM to request from PBS. Default = 128",
+    )
+    parser.add_argument(
+        "-t",
+        dest="walltime",
+        type=str,
+        default="12:00:00",
+        help="Simulation wall time to request from PBS. Default = 12:00:00",
     )
 
     args_dict = vars(parser.parse_args())
@@ -200,8 +241,12 @@ if __name__ == "__main__":
     num_iterations = int(args_dict.pop("iterations"))
     worker = int(args_dict.pop("worker"))
     nodes = int(args_dict.pop("nodes"))
+    gpu = int(args_dict.pop("gpu"))
     steps = int(args_dict.pop("steps"))
     launch = bool(int(args_dict.pop("launch")))
+    cpus = int(args_dict.pop("cpu"))
+    mem = int(args_dict.pop("mem"))
+    walltime = str(args_dict.pop("walltime"))
 
     with open(config_file) as cf:
         conf = yaml.load(cf, Loader=yaml.FullLoader)
@@ -218,7 +263,18 @@ if __name__ == "__main__":
 
     if launch:
         logging.info(f"Launching {nodes} workers to PBS")
-        launch_pbs_jobs(nodes, conf["save_loc"], policy, num_iterations, steps)
+        launch_pbs_jobs(
+            config_file,
+            nodes,
+            gpu,
+            conf["save_loc"],
+            policy,
+            num_iterations,
+            steps,
+            cpus,
+            mem,
+            walltime,
+        )
         sys.exit()
 
     # seed_everything(seed)
@@ -304,6 +360,7 @@ if __name__ == "__main__":
                 "test": data["test"],
                 "left_overs": left_overs,
             }
+
             # Preprocess the data
             scaled_data, scalers = preprocess_data(
                 data_dict,
