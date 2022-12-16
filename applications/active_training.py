@@ -254,6 +254,9 @@ if __name__ == "__main__":
     save_loc = conf["save_loc"]
     seed = conf["seed"]
     os.makedirs(save_loc, exist_ok=True)
+    os.makedirs(os.path.join(save_loc, "training_logs"), exist_ok = True)
+    os.makedirs(os.path.join(save_loc, "active_logs"), exist_ok = True)
+    os.makedirs(os.path.join(save_loc, "data_logs"), exist_ok = True)
 
     if not os.path.isfile(os.path.join(save_loc, "model.yml")):
         shutil.copyfile(config_file, os.path.join(save_loc, "model.yml"))
@@ -287,6 +290,12 @@ if __name__ == "__main__":
     data = load_ptype_data_day(conf, data_split=0, verbose=1)
     data["train"] = pd.concat([data["train"], data["val"]])
     del data["val"]
+    
+    # Set up a dataframe to save the split details after each active iteration
+    data_log = defaultdict(list)
+    data_log["id"] = [_ for v in data.values() for _ in v["id"]] 
+    data_log["ptype"] = [_ for v in data.values() for _ in np.argmax(v[output_features].values, 1)]
+    data_log = pd.DataFrame.from_dict(data_log)
 
     # check if we should scale the input data by groups
     scale_groups = [] if "scale_groups" not in conf else conf["scale_groups"]
@@ -340,6 +349,15 @@ if __name__ == "__main__":
                 left_overs = data["train"][data["train"]["id"].isin(left_overs)].copy()
                 if left_overs.shape[0] == 0:
                     break
+                    
+            # Save the ID and split to the data complexition dataframe 
+            # test ~ 0, train ~ 1, left overs ~ 2
+            data_log[f"iteration {iteration}"] = [-1 for _ in range(data_log.shape[0])] 
+            data_log[f"iteration {iteration}"].iloc[left_overs["id"].values] = 2
+            data_log[f"iteration {iteration}"].iloc[train_data_["id"].values] = 1
+            data_log[f"iteration {iteration}"].iloc[data["test"]["id"].values] = 0
+            data_log.to_csv(os.path.join(save_loc, "data_logs", f"data_complexion_{sidx}.csv"))
+                    
             # Split the available training data into train/validation split
             splitter = GroupShuffleSplit(
                 n_splits=conf["n_splits"],
@@ -370,7 +388,7 @@ if __name__ == "__main__":
                 encoder_type="onehot",
                 groups=groups,
             )
-
+            
             # Train model and predict on holdouts
             if policy in ["mc-dropout", "entropy", "mutual-info"]:
                 training_log, pred_df = train(
@@ -383,7 +401,7 @@ if __name__ == "__main__":
             if policy in pred_df["left_overs"]:
                 left_overs[policy] = pred_df["left_overs"][policy]
             training_log.to_csv(
-                os.path.join(save_loc, f"train_log_{iteration}_{sidx}.csv"), index=False
+                os.path.join(save_loc, "training_logs", f"train_log_{iteration}_{sidx}.csv"), index=False
             )
             print_str = f"Iteration {iteration}"
             active_results["iteration"].append(iteration)
@@ -417,7 +435,7 @@ if __name__ == "__main__":
                 # print_str += f" {_split}_{metric} {value:.4f}
 
             active_df = pd.DataFrame.from_dict(active_results)
-            active_df.to_csv(os.path.join(save_loc, f"active_train_log_{sidx}.csv"))
+            active_df.to_csv(os.path.join(save_loc, "active_logs", f"active_train_log_{sidx}.csv"))
             # print(print_str)
             # my_iter.set_description(print_str)
             # my_iter.refresh()
