@@ -15,6 +15,10 @@ from ptype.callbacks import get_callbacks, MetricsCallback
 from ptype.models import DenseNeuralNetwork
 from ptype.data import load_ptype_data_day, preprocess_data
 
+from evml.keras.callbacks import ReportEpoch
+from evml.keras.models import calc_prob_uncertainty
+
+
 warnings.filterwarnings("ignore")
 
 
@@ -61,7 +65,7 @@ class Objective(BaseObjective):
         return conf
 
 
-def trainer(conf, evaluate=True, data_seed=0, use_uncertainty=False):
+def trainer(conf, evaluate=True, data_seed=0):
     input_features = (
         conf["TEMP_C"] + conf["T_DEWPOINT_C"] + conf["UGRD_m/s"] + conf["VGRD_m/s"]
     )
@@ -75,31 +79,45 @@ def trainer(conf, evaluate=True, data_seed=0, use_uncertainty=False):
         scaler_type="standard",
         encoder_type="onehot",
     )
+    if conf["model"]["loss"] == "dirichlet":
+        use_uncertainty = True
+    else:
+        use_uncertainty = False
     callbacks = []
+    if use_uncertainty:
+        callbacks.append(ReportEpoch(conf["model"]["annealing_coeff"]))
     if "ModelCheckpoint" in conf["callbacks"]:  # speed up echo
         callbacks.append(
             MetricsCallback(
-                scaled_data["train_x"], scaled_data["train_y"], name="train"
+                scaled_data["train_x"],
+                scaled_data["train_y"],
+                name="train",
+                use_uncertainty=use_uncertainty,
             )
         )
     callbacks.append(
-        MetricsCallback(scaled_data["val_x"], scaled_data["val_y"], name="val")
+        MetricsCallback(
+            scaled_data["val_x"],
+            scaled_data["val_y"],
+            name="val",
+            use_uncertainty=use_uncertainty,
+        )
     )
     callbacks += get_callbacks(conf)
     mlp = DenseNeuralNetwork(**conf["model"], callbacks=callbacks)
     history = mlp.fit(scaled_data["train_x"], scaled_data["train_y"])
+    mlp.model.save(os.path.join(conf["save_loc"], "best"))
 
     if evaluate:
         for name in data.keys():
             x = scaled_data[f"{name}_x"]
-            y_pred = mlp.predict(x)
-            #             if use_uncertainty:
-            #                 pred_probs, u = calc_prob_uncertainty(y_pred)
-            #                 pred_probs = pred_probs.numpy()
-            #                 u = u.numpy()
-            #             else:
-            #                 pred_probs = y_pred
-            pred_probs = y_pred
+            pred_probs = mlp.predict(x)
+            if use_uncertainty:
+                pred_probs, u, ale, epi = calc_prob_uncertainty(pred_probs)
+                pred_probs = pred_probs.numpy()
+                u = u.numpy()
+                ale = ale.numpy()
+                epi = epi.numpy()
             true_labels = np.argmax(data[name][output_features].to_numpy(), 1)
             pred_labels = np.argmax(pred_probs, 1)
             confidences = np.take_along_axis(pred_probs, pred_labels[:, None], axis=1)
@@ -108,8 +126,12 @@ def trainer(conf, evaluate=True, data_seed=0, use_uncertainty=False):
             data[name]["pred_conf"] = confidences
             for k in range(pred_probs.shape[-1]):
                 data[name][f"pred_conf{k+1}"] = pred_probs[:, k]
-            # if use_uncertainty:
-            #     data[name]["pred_sigma"] = u
+            if use_uncertainty:
+                data[name]["evidential"] = u
+                data[name]['aleatoric'] =  np.take_along_axis(
+                    ale, pred_labels[:, None], axis=1)
+                data[name]['epistemic'] =  np.take_along_axis(
+                    epi, pred_labels[:, None], axis=1)
             data[name].to_parquet(
                 os.path.join(conf["save_loc"], f"{name}_{data_seed}.parquet")
             )
