@@ -74,7 +74,7 @@ class MetricsCallback(tf.keras.callbacks.Callback):
         true_labels = np.argmax(self.y, 1)
         pred_labels = np.argmax(pred_probs, 1)
         prec, recall, f1, _ = precision_recall_fscore_support(
-            true_labels, pred_labels, average="weighted"
+            true_labels, pred_labels, average="macro"
         )
         #logs[f"{self.name}_bal_acc"] = balanced_accuracy_score(true_labels, pred_labels)
         logs[f"{self.name}_ave_acc"] = self.ave_acc(true_labels, pred_labels)

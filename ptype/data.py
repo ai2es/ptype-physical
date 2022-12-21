@@ -12,6 +12,7 @@ from sklearn.preprocessing import (
     LabelEncoder,
     RobustScaler,
 )
+from bridgescaler.group import GroupMinMaxScaler, GroupRobustScaler, GroupStandardScaler
 from sklearn.model_selection import GroupShuffleSplit
 
 
@@ -46,9 +47,9 @@ def load_ptype_data(
     dates = sorted([x[-16:-8] for x in os.listdir(data_path)])
 
     data = {}
-    data["train"] = dates[dates.index(train_start) : dates.index(train_end) + 1]
-    data["val"] = dates[dates.index(val_start) : dates.index(val_end) + 1]
-    data["test"] = dates[dates.index(test_start) : dates.index(test_end) + 1]
+    data["train"] = dates[dates.index(train_start): dates.index(train_end) + 1]
+    data["val"] = dates[dates.index(val_start): dates.index(val_end) + 1]
+    data["test"] = dates[dates.index(test_start): dates.index(test_end) + 1]
 
     for split in data.keys():
         dfs = []
@@ -119,7 +120,7 @@ def load_ptype_data_day(conf, data_split=0, verbose=0):
     else:
         df = pd.read_parquet(os.path.join(conf["data_path"], "cached.parquet"))
 
-    ### Split and preprocess the data
+    # Split and preprocess the data
     df["day"] = df["datetime"].apply(lambda x: str(x).split(" ")[0])
     df["id"] = range(df.shape[0])
     test_days = [day for case in conf["case_studies"].values() for day in case]
@@ -166,7 +167,12 @@ def load_ptype_data_day(conf, data_split=0, verbose=0):
 
 
 def preprocess_data(
-    data, input_features, output_features, scaler_type="standard", encoder_type="onehot"
+    data,
+    input_features,
+    output_features,
+    scaler_type="standard",
+    encoder_type="onehot",
+    groups=[],
 ):
     """
     Function to select features and scale data for ML
@@ -180,23 +186,40 @@ def preprocess_data(
     Returns:
         Dictionary of scaled and one-hot encoded data, dictionary of scaler objects
     """
+    groupby = len(groups)
+
     scalar_obs = {
-        "minmax": MinMaxScaler,
-        "standard": StandardScaler,
-        "robust": RobustScaler,
+        "minmax": MinMaxScaler if not groupby else GroupMinMaxScaler,
+        "standard": StandardScaler if not groupby else GroupStandardScaler,
+        "robust": RobustScaler if not groupby else GroupRobustScaler,
     }
     scalers, scaled_data = {}, {}
-
     scalers["input"] = scalar_obs[scaler_type]()
-    scaled_data["train_x"] = pd.DataFrame(
-        scalers["input"].fit_transform(data["train"][input_features]),
-        columns=input_features,
-    )
+    scalers["output_label"] = LabelEncoder()
+    if encoder_type == "onehot":
+        scalers["output_onehot"] = OneHotEncoder(sparse=False)
+
+    if groupby:
+        scaled_data["train_x"] = pd.DataFrame(
+            scalers["input"].fit_transform(
+                data["train"][input_features], groups=groups
+            ),
+            columns=input_features,
+        )
+    else:
+        scaled_data["train_x"] = pd.DataFrame(
+            scalers["input"].fit_transform(data["train"][input_features]),
+            columns=input_features,
+        )
     scaled_data["val_x"] = pd.DataFrame(
         scalers["input"].transform(data["val"][input_features]), columns=input_features
     )
     scaled_data["test_x"] = pd.DataFrame(
         scalers["input"].transform(data["test"][input_features]), columns=input_features
+    )
+    if "left_overs" in data:
+        scaled_data["left_overs_x"] = pd.DataFrame(
+        scalers["input"].transform(data["left_overs"][input_features]), columns=input_features
     )
 
     scalers["output_label"] = LabelEncoder()
@@ -209,6 +232,10 @@ def preprocess_data(
     scaled_data["test_y"] = scalers["output_label"].transform(
         np.argmax(data["test"][output_features].to_numpy(), 1)
     )
+    if "left_overs" in data:
+        scaled_data["left_overs_y"] = scalers["output_label"].transform(
+            np.argmax(data["left_overs"][output_features].to_numpy(), 1)
+        )
 
     if encoder_type == "onehot":
         scalers["output_onehot"] = OneHotEncoder(sparse=False)
@@ -221,7 +248,11 @@ def preprocess_data(
         scaled_data["test_y"] = scalers["output_onehot"].transform(
             np.expand_dims(scaled_data["test_y"], 1)
         )
-
+        if "left_overs" in data:
+            scaled_data["left_overs_y"] = scalers["output_onehot"].transform(
+                np.expand_dims(scaled_data["left_overs_y"], 1)
+            )
+        
     return scaled_data, scalers
 
 
