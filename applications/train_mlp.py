@@ -145,7 +145,7 @@ def trainer(conf, evaluate=True, data_seed=0):
     # Predict on the data splits
     if evaluate:
         # Save the best model when not using ECHO
-        mlp.model.save(os.path.join(conf["save_loc"], "model"))
+        mlp.model.save(os.path.join(conf["save_loc"], "model.h5"))
         for name in data.keys():
             x = scaled_data[f"{name}_x"]
             pred_probs = mlp.predict(x)
