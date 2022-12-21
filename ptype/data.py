@@ -111,7 +111,7 @@ def load_ptype_data_day(conf, data_split=0, verbose=0):
         df = pd.concat(
             [
                 pd.read_parquet(x)
-                for x in tqdm.tqdm(
+                for x in tqdm(
                     glob.glob(os.path.join(conf["data_path"], "*.parquet"))
                 )
             ]
