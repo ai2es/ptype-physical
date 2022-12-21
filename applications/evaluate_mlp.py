@@ -4,11 +4,10 @@ import shutil
 import os
 import warnings
 from argparse import ArgumentParser
-import tensorflow as tf
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import tensorflow as tf
 from sklearn.metrics import precision_recall_fscore_support
 
 from ptype.reliability import (
@@ -215,48 +214,49 @@ def evaluate(conf, reevaluate=False):
     pd.DataFrame.from_dict(metrics).to_csv(
         os.path.join(save_loc, "metrics", "performance.csv")
     )
-
-    # CONUS plots for test cases
-    for case_study, dates in conf["case_studies"].items():
-        if data["test"]["day"].isin(dates[0:1]).sum():
-            labels_video(
-                data["test"],
-                dates,
-                "mping",
-                "true_label",
-                "True label",
-                os.path.join(save_loc, "cases", f"{case_study}_true_label.gif"),
-            )
-            labels_video(
-                data["test"],
-                dates,
-                "mping",
-                "pred_label",
-                "Predicted label",
-                os.path.join(save_loc, "cases", f"{case_study}_pred_label.gif"),
-            )
-            video(
-                data["test"],
-                dates,
-                "pred_conf",
-                "Probability",
-                case_study,
-                os.path.join(save_loc, "cases", f"{case_study}_prob.gif"),
-            )
-            for col in ["evidential", "aleatoric", "epistemic"]:
-                if col in data["test"]:
-                    save_path = os.path.join(
-                        save_loc, "cases", f"{case_study}_{col}.gif"
-                    )
-                    video(
-                        data["test"],
-                        dates,
-                        col,
-                        f"{col} uncertainty",
-                        case_study,
-                        save_path,
-                    )
-
+    #
+    # # CONUS plots for test cases
+    # for case_study, dates in conf["case_studies"].items():
+    #     print(dates,)
+    #     if data["test"]["day"].isin(dates[0:1]).sum():
+    #         labels_video(
+    #             data["test"],
+    #             dates,
+    #             "mping",
+    #             "true_label",
+    #             "True label",
+    #             os.path.join(save_loc, "cases", f"{case_study}_true_label.gif"),
+    #         )
+    #         labels_video(
+    #             data["test"],
+    #             dates,
+    #             "mping",
+    #             "pred_label",
+    #             "Predicted label",
+    #             os.path.join(save_loc, "cases", f"{case_study}_pred_label.gif"),
+    #         )
+    #         video(
+    #             data["test"],
+    #             dates,
+    #             "pred_conf",
+    #             "Probability",
+    #             case_study,
+    #             os.path.join(save_loc, "cases", f"{case_study}_prob.gif"),
+    #         )
+    #         for col in ["evidential", "aleatoric", "epistemic"]:
+    #             if col in data["test"]:
+    #                 save_path = os.path.join(
+    #                     save_loc, "cases", f"{case_study}_{col}.gif"
+    #                 )
+    #                 video(
+    #                     data["test"],
+    #                     dates,
+    #                     col,
+    #                     f"{col} uncertainty",
+    #                     case_study,
+    #                     save_path,
+    #                 )
+    #
 
 if __name__ == "__main__":
 
