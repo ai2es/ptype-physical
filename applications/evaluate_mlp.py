@@ -58,7 +58,7 @@ def evaluate(conf, reevaluate=False):
             scaler_type="standard",
             encoder_type="onehot",
         )
-        mlp = tf.keras.models.load_model(os.path.join(save_loc, "model"))
+        mlp = tf.keras.models.load_model(os.path.join(save_loc, "model"), compile=False)
         for name in data.keys():
             x = scaled_data[f"{name}_x"]
             pred_probs = mlp.predict(x)
