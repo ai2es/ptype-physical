@@ -4,7 +4,7 @@ from tensorflow.keras.layers import (
     GaussianNoise,
     LeakyReLU,
 )
-from tensorflow.keras.optimizers.legacy import Adam, SGD
+from tensorflow.keras.optimizers import Adam, SGD
 from tensorflow.keras.regularizers import l1, l2, l1_l2
 import tensorflow as tf
 import numpy as np
