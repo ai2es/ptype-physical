@@ -3,13 +3,14 @@ from echo.src.base_objective import BaseObjective
 from echo.src.trial_suggest import trial_suggest_loader
 import yaml
 import shutil
-import sys
 import os
 import gc
 import optuna
+import pickle
 import warnings
 import numpy as np
-from keras import backend as K
+from tensorflow.keras import backend as K
+from argparse import ArgumentParser
 
 from ptype.callbacks import get_callbacks, MetricsCallback
 from ptype.models import DenseNeuralNetwork
@@ -17,6 +18,7 @@ from ptype.data import load_ptype_data_day, preprocess_data
 
 from evml.keras.callbacks import ReportEpoch
 from evml.keras.models import calc_prob_uncertainty
+from bridgescaler import save_scaler
 
 
 warnings.filterwarnings("ignore")
@@ -38,11 +40,12 @@ class Objective(BaseObjective):
             del conf["callbacks"]["CSVLogger"]
         if "ModelCheckpoint" in conf["callbacks"]:
             del conf["callbacks"]["ModelCheckpoint"]
-        conf = self.custom_updates(trial, conf)
+        if "rain_weight" in conf["optuna"]["parameters"]:
+            conf = self.custom_updates(trial, conf)
         try:
             return {self.metric: trainer(conf, evaluate=False)}
         except Exception as E:
-            if "Unexpected result" in str(E):
+            if "Unexpected result" in str(E) or "CUDA" in str(E):
                 logger.warning(
                     f"Pruning trial {trial.number} due to unspecified error: {str(E)}."
                 )
@@ -71,18 +74,41 @@ def trainer(conf, evaluate=True, data_seed=0):
     )
     output_features = conf["ptypes"]
     metric = conf["metric"]
+    # flag for using the evidential model
+    if conf["model"]["loss"] == "dirichlet":
+        use_uncertainty = True
+    else:
+        use_uncertainty = False
     data = load_ptype_data_day(conf, data_split=0, verbose=1)
+    # check if we should scale the input data by groups
+    scale_groups = [] if "scale_groups" not in conf else conf["scale_groups"]
+    groups = [conf[g] for g in scale_groups]
+    leftovers = list(
+        set(input_features)
+        - set([row for group in scale_groups for row in conf[group]])
+    )
+    if len(leftovers):
+        groups.append(leftovers)
+    # scale the data
     scaled_data, scalers = preprocess_data(
         data,
         input_features,
         output_features,
         scaler_type="standard",
         encoder_type="onehot",
+        groups=groups,
     )
-    if conf["model"]["loss"] == "dirichlet":
-        use_uncertainty = True
-    else:
-        use_uncertainty = False
+    # Save the scalers when not using ECHO
+    if evaluate:
+        os.makedirs(os.path.join(conf["save_loc"], "scalers"), exist_ok=True)
+        for scaler_name, scaler in scalers.items():
+            fn = os.path.join(conf["save_loc"], "scalers", f"{scaler_name}.json")
+            try:
+                save_scaler(scaler, fn)
+            except TypeError:
+                with open(fn, "wb") as fid:
+                    pickle.dump(scaler, fid)
+    # set up callbacks
     callbacks = []
     if use_uncertainty:
         callbacks.append(ReportEpoch(conf["model"]["annealing_coeff"]))
@@ -95,6 +121,14 @@ def trainer(conf, evaluate=True, data_seed=0):
                 use_uncertainty=use_uncertainty,
             )
         )
+        callbacks.append(
+            MetricsCallback(
+                scaled_data["test_x"],
+                scaled_data["test_y"],
+                name="test",
+                use_uncertainty=use_uncertainty,
+            )
+        )
     callbacks.append(
         MetricsCallback(
             scaled_data["val_x"],
@@ -104,11 +138,14 @@ def trainer(conf, evaluate=True, data_seed=0):
         )
     )
     callbacks += get_callbacks(conf)
+    # initialize the model
     mlp = DenseNeuralNetwork(**conf["model"], callbacks=callbacks)
+    # train the model
     history = mlp.fit(scaled_data["train_x"], scaled_data["train_y"])
-    mlp.model.save(os.path.join(conf["save_loc"], "best"))
-
+    # Predict on the data splits
     if evaluate:
+        # Save the best model when not using ECHO
+        mlp.model.save(os.path.join(conf["save_loc"], "model"))
         for name in data.keys():
             x = scaled_data[f"{name}_x"]
             pred_probs = mlp.predict(x)
@@ -128,13 +165,13 @@ def trainer(conf, evaluate=True, data_seed=0):
                 data[name][f"pred_conf{k+1}"] = pred_probs[:, k]
             if use_uncertainty:
                 data[name]["evidential"] = u
-                data[name]['aleatoric'] =  np.take_along_axis(
-                    ale, pred_labels[:, None], axis=1)
-                data[name]['epistemic'] =  np.take_along_axis(
-                    epi, pred_labels[:, None], axis=1)
-            data[name].to_parquet(
-                os.path.join(conf["save_loc"], f"{name}_{data_seed}.parquet")
-            )
+                data[name]["aleatoric"] = np.take_along_axis(
+                    ale, pred_labels[:, None], axis=1
+                )
+                data[name]["epistemic"] = np.take_along_axis(
+                    epi, pred_labels[:, None], axis=1
+                )
+            data[name].to_parquet(os.path.join(conf["save_loc"], f"{name}.parquet"))
         return 1
 
     elif conf["direction"] == "max":  # Return metric to be used in ECHO
@@ -145,19 +182,27 @@ def trainer(conf, evaluate=True, data_seed=0):
 
 if __name__ == "__main__":
 
-    if len(sys.argv) < 2:
-        print("Usage: python train_classifier_keras.py model.yml")
-        sys.exit()
+    description = "Usage: python train_mlp.py -c model.yml"
+    parser = ArgumentParser(description=description)
+    parser.add_argument(
+        "-c",
+        dest="model_config",
+        type=str,
+        default=False,
+        help="Path to the model configuration (yml) containing your inputs.",
+    )
 
-    config = sys.argv[1]
-    with open(config) as cf:
+    args_dict = vars(parser.parse_args())
+    config_file = args_dict.pop("model_config")
+
+    with open(config_file) as cf:
         conf = yaml.load(cf, Loader=yaml.FullLoader)
 
     save_loc = conf["save_loc"]
     os.makedirs(save_loc, exist_ok=True)
 
     if not os.path.isfile(os.path.join(save_loc, "model.yml")):
-        shutil.copyfile(config, os.path.join(save_loc, "model.yml"))
+        shutil.copyfile(config_file, os.path.join(save_loc, "model.yml"))
     else:
         with open(os.path.join(save_loc, "model.yml"), "w") as fid:
             yaml.dump(conf, fid)
