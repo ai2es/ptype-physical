@@ -17,7 +17,7 @@ jobs:
         miniconda-version: "latest"
         mamba-version: "*"
         channel-priority: true
-        python-version: "3.9"
+        python-version: "3.10"
         channels: conda-forge
         environment-file: environment.yml
         auto-activate-base: false
