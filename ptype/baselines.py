@@ -85,10 +85,12 @@ def precip_type_partial_thickness(pressure_profile_hPa, geopotential_height_prof
         precip_type[:] = 0
         precip_type[2] = 1
     if surface_pressure_hPa > 1000:
-        if precip_type[1] == 0.5 and precip_type[2] == 0.5 and temperature_surface < -1:
-            precip_type[2] = 0.25
+        if (precip_type[2] == 0.75 and precip_type[1] > 0.25) or (precip_type[3] == 0.75 and precip_type[0] == 0.25) and temperature_surface < -1:
+            precip_type[:] = 0
+            precip_type[1] = 0.25
             precip_type[3] = 0.75
         if precip_type[0] == 1 and temperature_surface < -1:
+            precip_type[:] = 0
             precip_type[0] = 0.25
             precip_type[3] = 0.75
         if thickness_850_700_m > 1600 and thickness_1000_850_m > 1325:
