@@ -9,3 +9,4 @@ jupyterlab
 cartopy
 requests
 metpy
+joblib

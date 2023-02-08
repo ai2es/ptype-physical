@@ -1,9 +1,10 @@
 import numpy as np
-# from numba import jit
+from numba import jit
 from sklearn.base import BaseEstimator
 from joblib import Parallel, delayed
 
-# @jit
+
+@jit
 def precip_type_partial_thickness(pressure_profile_hPa, geopotential_height_profile_m,
                                   temperature_profile_C, surface_pressure_hPa):
     """
@@ -97,8 +98,8 @@ def precip_type_partial_thickness(pressure_profile_hPa, geopotential_height_prof
             precip_type[:] = 0
             precip_type[0] = 1
     return precip_type.reshape(1, -1)
-#
-# @jit
+
+@jit
 def thickness_profile(bottom_pressure, top_pressure, pressure_profile, geopotential_height_profile):
     """
     Calculate thickness of layer between two pressure levels.
@@ -133,6 +134,7 @@ def _partial_thickness_grid_loop(pressure_hPa, geopotential_height_m,
                                                                     temperature_C[:, i, j],
                                                                     surface_pressure_hPa[i, j])
     return precip_type_probs
+
 
 class PartialThicknessClassifier(BaseEstimator):
     """
