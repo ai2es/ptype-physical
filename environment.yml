@@ -1,8 +1,10 @@
-name: ai2es
+name: ptype
 channels:
   - conda-forge
 dependencies:
-  - python=3.8
+  - python=3.9
+  - optuna
+  - pip
   - numpy
   - scipy
   - matplotlib
@@ -14,7 +16,6 @@ dependencies:
   - pyyaml
   - pytest
   - distributed
-  - pip
   - pyproj
   - jupyter
   - jupyterlab
@@ -24,8 +25,16 @@ dependencies:
   - numba
   - cython
   - flake8
+  - requests
+  - metpy
   - pip:
+    - pyarrow
+    - fastparquet
     - tensorflow
     - tensorflow-probability
-    - permutationimportance
+    - hagelslag
+    - imblearn
+    - git+https://github.com/NCAR/bridgescaler
+    - git+https://github.com/NCAR/echo-opt
+    - git+https://github.com/ai2es/evidential.git
     - .
