@@ -83,7 +83,7 @@ def full_rap_map(date, time, preds_loc, map_save_loc, wind, lvl, ptypewise=True,
     preds_data = xr.open_dataset(preds_loc)
     preds = preds_data["mlp_preds"].values
     
-    rap_data = xr.open_dataset(os.path.join(rap_loc, date, f"rap_130_{date}_{time}_000.nc")
+    rap_data = xr.open_dataset(os.path.join(rap_loc, date, f"rap_130_{date}_{time}_000.nc"))
 
     # Get mPING observations
     ptypes = ["ra_percent", "sn_percent", "pl_percent", "fzra_percent"]
