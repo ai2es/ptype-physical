@@ -1,0 +1,12 @@
+numpy
+scipy
+pandas
+tensorflow
+keras
+matplotlib
+jupyter
+jupyterlab
+cartopy
+requests
+metpy
+joblib
