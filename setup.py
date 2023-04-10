@@ -9,12 +9,13 @@ package_description = "<Provide short description of package>"
 url = "https://github.com/ai2es/" + project_name
 # Classifiers listed at https://pypi.org/classifiers/
 classifiers = ["Programming Language :: Python :: 3"]
-setup(name="ai2estemplate", # Change
+
+setup(name="ptype",
       version=version,
       description=package_description,
       url=url,
       author="AI2ES",
       license="CC0 1.0",
       classifiers=classifiers,
-      packages=find_packages(include=["src"]))
+      packages=find_packages(include=["ptype"]))
 
