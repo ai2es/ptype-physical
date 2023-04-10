@@ -1,0 +1,8 @@
+model: "rap"
+start_date: "2023-04-10"
+end_date: "2023-04-10"
+frequency: "1H"
+first_forecast_hour: 1
+last_forecast_hour: 18
+fh_step: 1
+ML_model_path:
