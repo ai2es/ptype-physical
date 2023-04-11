@@ -3,25 +3,28 @@ import sys
 import pickle
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 from datetime import datetime
 import xarray as xr
-from pyproj import CRS, Transformer, Proj
+from pyproj import Proj
 from scipy.spatial.distance import cdist
 from metpy.calc import dewpoint_from_relative_humidity
 from metpy.units import units
 
 
-idx_s, idx_e = [int(a) for a in sys.argv[1:]]
-print(idx_s, idx_e)
+source = sys.argv[1]
+idx_s, idx_e = [int(a) for a in sys.argv[2:]]
+print(source, idx_s, idx_e)
 
 path_precip = "/glade/p/cisl/aiml/ai2es/winter_ptypes/"
 path_rap = "/glade/p/cisl/aiml/conv_risk_intel/rap_ncei_nc/"
 path_save = "/glade/p/cisl/aiml/ai2es/winter_ptypes/precip_rap/"
 
-precip_files = [f for f in os.listdir(path_precip) if f.endswith('.csv')]
+if source == 'ASOS':
+    precip_files = [f for f in os.listdir(path_precip) if f.endswith('.csv')]
+    precip_files = [f for f in precip_files if f.startswith('ASOS')]
+if source == 'mPING':
+    precip_files = [f for f in os.listdir(path_precip) if f.endswith('eliot.csv')]
 precip_files.sort()
-
 
 def find_coord_indices(lon_array, lat_array, lon_points, lat_points, dist_proj='lcc_RAP'):
     """
@@ -49,42 +52,41 @@ def find_coord_indices(lon_array, lat_array, lon_points, lat_points, dist_proj='
 
     return np.column_stack((np.unravel_index(idx, lon_array.shape))).tolist()
 
-
+# load all precip reports into one dataframe
 precip_types = ['ra', 'sn', 'pl', 'fzra']
-df_mPING = pd.DataFrame()
-for precip in precip_files:
-    if precip.startswith('ASOS'):    
-        continue
-    else:
-        df_temp = pd.read_csv(os.path.join(path_precip, precip))
-        df_temp['precip'] = list(set(precip.split('.')).intersection(set(precip_types)))[0]
+df = pd.DataFrame()
+for file in precip_files:
+    df_temp = pd.read_csv(os.path.join(path_precip, df))
+    df_temp['precip'] = list(set(df.split('.')).intersection(set(precip_types)))[0]
 
-        if df_temp.isna().sum().sum() > 0:
-            print(f"Dropping {df_temp.isna().sum().sum()} rows from {precip} because NaNs are present.")
-            df_temp.dropna(inplace=True)
+    if df_temp.isna().sum().sum() > 0:
+        print(f"Dropping {df_temp.isna().sum().sum()} rows from {df} because NaNs are present.")
+        df_temp.dropna(inplace=True)
 
-        try:
-            datetime.strptime(df_temp.index[0], '%M/%d/%Y')
-            df_temp = df_temp.reset_index().rename(columns={'index':'obdate'})
-        except:
-            pass
+    try:
+        datetime.strptime(df_temp.index[0], '%M/%d/%Y')
+        df_temp = df_temp.reset_index().rename(columns={'index':'obdate'})
+    except:
+        pass
 
-        df_temp['datetime'] = pd.to_datetime(df_temp['obdate'] + ' ' + df_temp['obtime'], format="%m/%d/%Y %H:%M:%S")
-        df_temp['datetime'] = df_temp['datetime'].dt.floor(freq='H')
-        df_mPING = df_mPING.append(df_temp, ignore_index=True)
+    df_temp['datetime'] = pd.to_datetime(df_temp['obdate'] + ' ' + df_temp['obtime'],
+                                         format="%m/%d/%Y %H:%M:%S")
+    df_temp['datetime'] = df_temp['datetime'].dt.floor(freq='H')
+    df = df.append(df_temp, ignore_index=True)
 del df_temp
 
-with open("./missing_mPING.pkl", "rb") as f:
-    missing_mPING = pickle.load(f)
+with open(f"../notebooks/missing_{source}.pkl", "rb") as f:
+    missing = pickle.load(f)
 
-print(df_mPING.shape)
-missing_mPING = [datetime.strptime(x, '%Y%m%d').strftime('%m/%d/%Y') for x in missing_mPING][idx_s:idx_e]
-df_mPING = df_mPING[df_mPING.obdate.isin(missing_mPING)]
-print(df_mPING.shape)
+print(df.shape)
+missing = [datetime.strptime(x, '%Y%m%d').strftime('%m/%d/%Y') for x in missing][idx_s:idx_e]
+df = df[df.obdate.isin(missing)]
+print(df.shape)
 
-duplicate_counts = df_mPING.groupby(['obdate', 'lat', 'lon', 'precip', 'datetime']).count()
-df_mPING = df_mPING.drop_duplicates(subset=['obdate', 'lat', 'lon', 'precip', 'datetime'], keep='first', ignore_index=True)
-df_mPING['precip_count_byhr'] = list(duplicate_counts['obtime'])
+duplicate_counts = df.groupby(['obdate', 'lat', 'lon', 'precip', 'datetime']).count()
+df = df.drop_duplicates(subset=['obdate', 'lat', 'lon', 'precip', 'datetime'],
+                        keep='first', ignore_index=True)
+df['precip_count_byhr'] = list(duplicate_counts['obtime'])
 
 
 varsSave = ['SNOW_WATER_EQ',
@@ -97,6 +99,7 @@ varsSave = ['SNOW_WATER_EQ',
             'CICEP',
             'CSNOW',
             'TMP_ON_SURFACE',
+            'TEMPERATURE_2M_C',
             'MEAN_SEA_LEVEL',
             'PRES_ON_SURFACE',
             'POT_TEMP_2M',
@@ -111,19 +114,19 @@ varsSurface = list(set(varsSave) - set(varsPressure))
 
 
 def df_flatten(ds, x, y, varsP, varsS):
-    
-    df = ds.isel(x=x,y=y).to_dataframe()[varsP]
-    idx0 = df.index.levels[0].astype(int).astype(str)
-    idx1 = df.index.levels[1]
+
+    df = ds.isel(x=x, y=y).to_dataframe()[varsP]
+    idx0 = df.index.levels[0]
+    idx1 = df.index.levels[1].astype(int).astype(str)
     df.index = df.index.set_levels([idx0, idx1])
     df = df.unstack(level='press').sort_index()
     df.columns = df.columns.map('_'.join)
-    
+
     varsAvailable = list(set(varsS).intersection(set(ds.variables)))
     dfS = ds[varsAvailable].isel(x=x,y=y).to_dataframe()[varsAvailable]
-    
+
     df = df.join(dfS).reset_index(drop=True)
-    
+
     return df
 
 def calc_dewpoint(df): # Create T_DEWPOINT columns from RH and TMP
@@ -134,7 +137,7 @@ def calc_dewpoint(df): # Create T_DEWPOINT columns from RH and TMP
     for p in list(range(100, 1025, 25)):
         df_RH = units.Quantity(np.array(df[f'RH_{p}'])/100., "dimensionless")
         df_TMP =  units.Quantity(np.array(df[f'TMP_{p}']), "K")
-        df[f'T_DEWPOINT_{p}'] = dewpoint_from_relative_humidity(df_TMP, df_RH) 
+        df[f'T_DEWPOINT_{p}'] = dewpoint_from_relative_humidity(df_TMP, df_RH)
     return df
 
 def convert_KtoC(df, varsUnits_dict):
@@ -142,7 +145,7 @@ def convert_KtoC(df, varsUnits_dict):
     for var, units in varsUnits_dict.items():
         if units == 'K':
             try:
-                df[var] = df[var] - 273.15            
+                df[var] = df[var] - 273.15
                 varsUnits_dict[var] = 'C'
             except:
                 continue
@@ -156,13 +159,13 @@ def add_units(df, varsUnits_dict):
     return df
 
 
-columns = list(df_mPING.columns) + [v+'_'+str(i) for v in varsPressure for i in list(range(100, 1025, 25))] + varsSurface
-date_group = df_mPING.groupby('obdate')
+columns = list(df.columns) + [v+'_'+str(i) for v in varsPressure for i in list(range(100, 1025, 25))] + varsSurface
+date_group = df.groupby('obdate')
 for name, date_chunk in date_group:
     with open(os.path.join(path_save, "varsUnits_dict.pkl"), 'rb') as f:
         varsUnits_dict = pickle.load(f)
     df_save = pd.DataFrame(columns=columns)
-    date = datetime.strptime(name, '%m/%d/%Y').strftime('%Y%m%d')    
+    date = datetime.strptime(name, '%m/%d/%Y').strftime('%Y%m%d')
     datetime_group = date_chunk.groupby('datetime')
     for name, datetime_chunk in datetime_group:
         hour = name.strftime('%H')
@@ -187,7 +190,7 @@ for name, date_chunk in date_group:
             except Exception as e:
                 print("\t- flattening not possible: ", date, hour, e)
                 continue
-            df_temp = pd.DataFrame(row).T.join(ds_temp.rename(index={0:row.name}))
+            df_temp = pd.DataFrame(row).T.join(ds_temp.rename(index={0: row.name}))
             df_save = df_save.append(df_temp, ignore_index = True)
 
     # add dewpoint, convert K to C, rename columns to add units, sort by datetime, and save
@@ -199,4 +202,4 @@ for name, date_chunk in date_group:
     if 0 in df_save.shape:
         print(f"Nothing to save for {date}")
     else:
-        df_save.to_parquet(os.path.join(path_save, f"mPING_raw/mPING_rap_{date}.parquet"))
+        df_save.to_parquet(os.path.join(path_save, f"{source}_raw/{source}_rap_{date}.parquet"))
