@@ -178,7 +178,7 @@ def load_model(model_path):
 
     model = CategoricalDNN(**conf["model"])
     model.build_neural_network(268, 4)
-    model.model.load_weights("/Users/cbecker/Desktop/Projects/ptype-physical/classifier/models/model_11.h5")
+    model.model.load_weights(os.path.join(model_path, "models", "model_11.h5"))
 
     return model, x_transformer
 
