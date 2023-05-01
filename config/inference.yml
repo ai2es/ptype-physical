@@ -1,8 +1,42 @@
-model: "rap"
-start_date: "2023-04-10"
-end_date: "2023-04-10"
-frequency: "1H"
-first_forecast_hour: 1
-last_forecast_hour: 18
-fh_step: 1
-ML_model_path:
+model: "gfs"
+ML_model_path: "/Users/cbecker/Desktop/Projects/ptype-physical/classifier/"
+out_path: "/Users/username/Desktop/Projects/ptype-physical/data/"
+drop_input_data: True
+
+dates:
+  start: "2023-03-15"
+  end: "2023-03-15"
+  frequency: "1H"
+
+forecast_range:
+  start: 1
+  end: 1
+  interval: 1
+
+height_levels:
+  low: 0
+  high: 16500
+  interval: 250
+
+variables:
+  model:
+    rap:
+      isobaricInhPa: ["t", "u", "v", "r", "gh"]
+      surface: ["orog"]
+      heightAboveGround: ["t2m", "d2m", "u10", "v10"]
+      product: "awp130pgrb"
+    hrrr:
+      isobaricInhPa: ["t", "u", "v", "dpt", "gh"]
+      surface: ["orog"]
+      heightAboveGround: ["t2m", "d2m", "u10", "v10"]
+      product: "prs"
+    gfs:
+      isobaricInhPa: [ "t", "u", "v", "q", "gh" ]
+      surface: ["orog"]
+      heightAboveGround: [ "t2m", "d2m", "u10", "v10" ]
+      product: "pgrb2.0p25"
+    nam:
+      isobaricInhPa: [ "t", "u", "v", "dpt", "gh" ]
+      surface: ["orog"]
+      heightAboveGround: [ "t2m", "d2m", "u10", "v10" ]
+      product: "conusnest.hiresf"
