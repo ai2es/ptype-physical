@@ -9,6 +9,7 @@ package_description = "<Provide short description of package>"
 url = "https://github.com/ai2es/" + project_name
 # Classifiers listed at https://pypi.org/classifiers/
 classifiers = ["Programming Language :: Python :: 3"]
+
 setup(name="ptype",
       version=version,
       description=package_description,

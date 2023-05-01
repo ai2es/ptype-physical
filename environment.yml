@@ -2,7 +2,7 @@ name: ptype
 channels:
   - conda-forge
 dependencies:
-  - python=3.9
+  - python=3.10
   - optuna
   - pip
   - numpy
@@ -33,7 +33,6 @@ dependencies:
   - yaml
   - pip:
     - pyarrow
-    - fastparquet
     - tensorflow
     - tensorflow-probability
     - hagelslag
