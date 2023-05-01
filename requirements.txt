@@ -12,5 +12,5 @@ metpy
 yaml
 cfgrib
 bridgescaler
-herbie
+herbie-data
 joblib
