@@ -9,3 +9,7 @@ jupyterlab
 cartopy
 requests
 metpy
+yaml
+cfgrib
+bridgescaler
+herbie
