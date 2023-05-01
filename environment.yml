@@ -27,6 +27,10 @@ dependencies:
   - flake8
   - requests
   - metpy
+  - herbie-data
+  - metpy
+  - cfgrib
+  - yaml
   - pip:
     - pyarrow
     - fastparquet
@@ -37,4 +41,5 @@ dependencies:
     - git+https://github.com/NCAR/bridgescaler
     - git+https://github.com/NCAR/echo-opt
     - git+https://github.com/ai2es/evidential.git
+    - bridgescaler
     - .
