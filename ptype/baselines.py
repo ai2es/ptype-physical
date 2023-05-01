@@ -1,9 +1,10 @@
 import numpy as np
-# from numba import jit
+from numba import jit
 from sklearn.base import BaseEstimator
 from joblib import Parallel, delayed
 
-# @jit
+
+@jit
 def precip_type_partial_thickness(pressure_profile_hPa, geopotential_height_profile_m,
                                   temperature_profile_C, surface_pressure_hPa):
     """
@@ -85,18 +86,20 @@ def precip_type_partial_thickness(pressure_profile_hPa, geopotential_height_prof
         precip_type[:] = 0
         precip_type[2] = 1
     if surface_pressure_hPa > 1000:
-        if precip_type[1] == 0.5 and precip_type[2] == 0.5 and temperature_surface < -1:
-            precip_type[2] = 0.25
+        if (precip_type[2] == 0.75 and precip_type[1] > 0.25) or (precip_type[3] == 0.75 and precip_type[0] == 0.25) and temperature_surface < -1:
+            precip_type[:] = 0
+            precip_type[1] = 0.25
             precip_type[3] = 0.75
         if precip_type[0] == 1 and temperature_surface < -1:
+            precip_type[:] = 0
             precip_type[0] = 0.25
             precip_type[3] = 0.75
         if thickness_850_700_m > 1600 and thickness_1000_850_m > 1325:
             precip_type[:] = 0
             precip_type[0] = 1
     return precip_type.reshape(1, -1)
-#
-# @jit
+
+@jit
 def thickness_profile(bottom_pressure, top_pressure, pressure_profile, geopotential_height_profile):
     """
     Calculate thickness of layer between two pressure levels.
@@ -110,6 +113,27 @@ def thickness_profile(bottom_pressure, top_pressure, pressure_profile, geopotent
     bottom_index = np.argmin(np.abs(pressure_profile - bottom_pressure))
     top_index = np.argmin(np.abs(pressure_profile - top_pressure))
     return geopotential_height_profile[top_index] - geopotential_height_profile[bottom_index]
+
+
+def partial_thickness_full_grid_single_time(rap_ds):
+    pressure_hPa = rap_ds["press"].values
+    geopotential_height_m = rap_ds["HGT"][0].values
+    temperature_C = rap_ds["TMP"][0].values - 273.15
+    surface_pressure_hPa = rap_ds["PRES_ON_SURFACE"][0].values / 100.0
+    precip_type_probs = _partial_thickness_grid_loop(pressure_hPa, geopotential_height_m, temperature_C, surface_pressure_hPa)
+    return precip_type_probs
+
+@jit
+def _partial_thickness_grid_loop(pressure_hPa, geopotential_height_m,
+                                  temperature_C, surface_pressure_hPa):
+    precip_type_probs = np.zeros((surface_pressure_hPa.shape[0], surface_pressure_hPa.shape[1], 4))
+    for i in range(precip_type_probs.shape[0]):
+        for j in range(precip_type_probs.shape[1]):
+            precip_type_probs[i, j] = precip_type_partial_thickness(pressure_hPa,
+                                                                    geopotential_height_m[:, i, j],
+                                                                    temperature_C[:, i, j],
+                                                                    surface_pressure_hPa[i, j])
+    return precip_type_probs
 
 
 class PartialThicknessClassifier(BaseEstimator):
