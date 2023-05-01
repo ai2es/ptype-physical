@@ -13,3 +13,4 @@ yaml
 cfgrib
 bridgescaler
 herbie
+joblib
