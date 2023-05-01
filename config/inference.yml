@@ -1,4 +1,4 @@
-model: "gfs"
+model: "rap"
 ML_model_path: "/Users/cbecker/Desktop/Projects/ptype-physical/classifier/"
 out_path: "/Users/username/Desktop/Projects/ptype-physical/data/"
 drop_input_data: True
@@ -10,7 +10,7 @@ dates:
 
 forecast_range:
   start: 1
-  end: 1
+  end: 4
   interval: 1
 
 height_levels:
