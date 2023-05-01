@@ -1,6 +1,6 @@
 model: "rap"
-ML_model_path: "/Users/cbecker/Desktop/Projects/ptype-physical/classifier/"
-out_path: "/Users/username/Desktop/Projects/ptype-physical/data/"
+ML_model_path: "/glade/work/schreck/repos/evidential/main/results/ptype/classifier/"
+out_path: "/Users/username/scratch/ptype_output/"
 drop_input_data: True
 
 dates:
