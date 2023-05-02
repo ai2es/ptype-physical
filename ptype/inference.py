@@ -73,14 +73,15 @@ def load_data(var_dict, file, model, drop):
     """
     grib_data = []
     for key, value in var_dict.items():
+        if key == "product":
+            continue
         for var in value:
-            grib = cfgrib.open_dataset(file,
-                                       backend_kwargs={"filter_by_keys": {'typeOfLevel': key, 'cfVarName': var}})
-            if len(grib) > 1:
-                for g in grib:
-                    grib_data.append(g)
-            else:
-                grib_data.append(grib)
+            grib = cfgrib.open_dataset(file, backend_kwargs={
+                "filter_by_keys": {'typeOfLevel': key, 'cfVarName': var, 'stepType': 'instant'}})
+            if len(grib) == 0:
+                grib = cfgrib.open_dataset(file, backend_kwargs={
+                    "filter_by_keys": {'typeOfLevel': key, 'shortName': var, 'stepType': 'instant'}})
+            grib_data.append(grib)
 
     ds = xr.merge(grib_data, compat='override')
     ds['t'].values = kelvin_to_celcius(ds['t'].values)
@@ -100,7 +101,7 @@ def load_data(var_dict, file, model, drop):
         ds['dpt'].values = kelvin_to_celcius(ds['dpt'].values)
     ds['hgt_above_sfc'] = ds['gh'] - ds['orog']
     df = df_flatten(ds, ['t', 'dpt', 'u', 'v', 'hgt_above_sfc'])
-    surface_vars = {x: ds[x].values.flatten() for x in ['t2m', 'd2m', 'u10', 'v10']}
+    surface_vars = {x: ds[x].values.flatten() for x in var_dict["heightAboveGround"] + var_dict["surface"]}
     if drop:
         dropped = var_dict["isobaricInhPa"] + ['hgt_above_sfc'] + ['dpt']
         return ds.drop_vars(dropped), df, surface_vars
