@@ -31,6 +31,7 @@ dependencies:
   - metpy
   - cfgrib
   - yaml
+  - numba
   - pip:
     - pyarrow
     - tensorflow

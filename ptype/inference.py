@@ -9,6 +9,8 @@ import os
 from bridgescaler import load_scaler
 from evml.keras.models import CategoricalDNN
 import yaml
+import numba
+from numba import jit
 
 
 def df_flatten(ds, varsP, vertical_level_name='isobaricInhPa'):
@@ -20,14 +22,14 @@ def df_flatten(ds, varsP, vertical_level_name='isobaricInhPa'):
     Returns:
          Pandas Dataframe of flattened variables split out by variable name in format: <varName>_<pressure_level>
     """
+    l, cols = [], []
+    for v in varsP:
+        for p in ds[vertical_level_name].values:
+            cols.append(f"{v}_{int(p)}")
+            l.append(ds[v].sel(isobaricInhPa=p).values.reshape(-1, 1))
+    flat_data = np.concatenate(l, axis=1)
 
-    df = ds.to_dataframe()[varsP]
-    df = df.unstack(level=vertical_level_name).sort_index()
-    pressure_columns = df.columns.levels[1].astype(int).astype(str)
-    df.columns = df.columns.set_levels(pressure_columns, level=1)
-    df.columns = df.columns.map('_'.join)
-
-    return df
+    return pd.DataFrame(flat_data, columns=cols)
 
 
 def kelvin_to_celcius(temp):
@@ -83,7 +85,7 @@ def load_data(var_dict, file, model, drop):
                     "filter_by_keys": {'typeOfLevel': key, 'shortName': var, 'stepType': 'instant'}})
             grib_data.append(grib)
 
-    ds = xr.merge(grib_data, compat='override')
+    ds = xr.merge(grib_data, compat='override')#.load()
     ds['t'].values = kelvin_to_celcius(ds['t'].values)
     if model == "rap":
         ds['dpt'] = dewpoint_from_relative_humidity(ds['t'] * units.degC, ds['r'].values / 100)
@@ -101,7 +103,10 @@ def load_data(var_dict, file, model, drop):
         ds['dpt'].values = kelvin_to_celcius(ds['dpt'].values)
     ds['hgt_above_sfc'] = ds['gh'] - ds['orog']
     df = df_flatten(ds, ['t', 'dpt', 'u', 'v', 'hgt_above_sfc'])
+
     surface_vars = {x: ds[x].values.flatten() for x in var_dict["heightAboveGround"] + var_dict["surface"]}
+    surface_vars['t2m'] = kelvin_to_celcius(surface_vars['t2m'])
+    surface_vars['d2m'] = kelvin_to_celcius(surface_vars['d2m'])
     if drop:
         dropped = var_dict["isobaricInhPa"] + ['hgt_above_sfc'] + ['dpt']
         return ds.drop_vars(dropped), df, surface_vars
@@ -109,7 +114,7 @@ def load_data(var_dict, file, model, drop):
         return ds, df, surface_vars
 
 
-def interpolate_data(data, surface_data, pressure_levels, height_levels):
+def convert_and_interpolate(data, surface_data, pressure_levels, height_levels):
     """
     Convert Pressure level data to height above surface and interpolate data across specified height levels.
     Args:
@@ -128,24 +133,32 @@ def interpolate_data(data, surface_data, pressure_levels, height_levels):
     for var in ['t', 'dpt', 'u', 'v', 'hgt_above_sfc']:
         cols[var] = [f"{var}_{int(x)}" for x in pressure_levels]
 
-    var_arrays = {}
+    var_arrays = []
     variables = ['t', 'dpt', 'u', 'v']
     surface_variables = ['t2m', 'd2m', 'u10', 'v10']
-    for v, sv in zip(variables, surface_variables):
-        arr = np.empty(shape=(data.shape[0], len(height_levels)))
-        x = data[cols['hgt_above_sfc']].values
-        y = data[cols[v]].values
-        for i in np.arange(arr.shape[0]):
-            arr[i] = np.interp(x=height_levels,
-                               xp=x[i],
-                               fp=y[i],
-                               left=surface_data[sv][i])
-        var_arrays[v] = arr
+    x = data[cols['hgt_above_sfc']].values
 
-    all_data = np.concatenate([var_arrays[var] for var in variables], axis=1)
+    for v, sv in zip(variables, surface_variables):
+        y = data[cols[v]].values
+        arr = interpolate(x, y, height_levels)
+        arr[:, 0] = surface_data[sv]
+        var_arrays.append(arr)
+
+    all_data = np.concatenate(var_arrays, axis=1)
 
     return all_data
 
+
+@jit(nopython=True, parallel=True, cache=True)
+def interpolate(x, y, height_levels):
+
+    arr = np.zeros(shape=(x.shape[0], len(height_levels)))
+
+    for i in numba.prange(arr.shape[0]):
+        arr[i] = np.interp(x=height_levels,
+                           xp=x[i],
+                           fp=y[i])
+    return arr
 
 def transform_data(input_data, transformer):
     """
@@ -159,7 +172,7 @@ def transform_data(input_data, transformer):
     """
     transformed_data = transformer.transform(pd.DataFrame(input_data, columns=transformer.x_columns_))
 
-    return transformed_data
+    return transformed_data.values
 
 
 def load_model(model_path):
