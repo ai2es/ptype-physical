@@ -236,7 +236,9 @@ def save_data(dataset, out_path, date, model, forecast_hour):
     date_str = date.strftime(f"%Y%m%d_{forecast_hour:02}00")
     file_str = f"ptype_predictions_{model}_{date_str}.nc"
     full_path = os.path.join(out_path, model, dir_str, file_str)
-    dataset.to_netcdf(full_path)
+    encoding_vars = [v for v in list(dataset.data_vars)]
+    encoding = {var: {"zlib": True, "complevel": 4, "least_significant_digit": 4.0} for var in encoding_vars}
+    dataset.to_netcdf(full_path, encoding=encoding)
     print(f"Successfully wrote: {full_path}")
 
     return
