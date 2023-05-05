@@ -11,6 +11,7 @@ from evml.keras.models import CategoricalDNN
 import yaml
 import numba
 from numba import jit
+import glob
 
 
 def df_flatten(ds, varsP, vertical_level_name='isobaricInhPa'):
@@ -84,8 +85,8 @@ def load_data(var_dict, file, model, drop):
                 grib = cfgrib.open_dataset(file, backend_kwargs={
                     "filter_by_keys": {'typeOfLevel': key, 'shortName': var, 'stepType': 'instant'}})
             grib_data.append(grib)
-
-    ds = xr.merge(grib_data, compat='override')#.load()
+    os.remove(glob.glob(file + '*.idx')[0])  # delete index file that is created the first time grib file is opened
+    ds = xr.merge(grib_data, compat='override').load()
     ds['t'].values = kelvin_to_celcius(ds['t'].values)
     if model == "rap":
         ds['dpt'] = dewpoint_from_relative_humidity(ds['t'] * units.degC, ds['r'].values / 100)
