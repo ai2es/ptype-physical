@@ -14,3 +14,4 @@ cfgrib
 bridgescaler
 herbie-data
 joblib
+numba
