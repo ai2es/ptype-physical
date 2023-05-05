@@ -85,7 +85,9 @@ def load_data(var_dict, file, model, drop):
                 grib = cfgrib.open_dataset(file, backend_kwargs={
                     "filter_by_keys": {'typeOfLevel': key, 'shortName': var, 'stepType': 'instant'}})
             grib_data.append(grib)
-    os.remove(glob.glob(file + '*.idx')[0])  # delete index file that is created the first time grib file is opened
+
+    for idx in glob.glob(file + '*.idx'):
+        os.remove(idx)  # delete index files that are created when opening grib
     ds = xr.merge(grib_data, compat='override').load()
     ds['t'].values = kelvin_to_celsius(ds['t'].values)
     if model == "rap":
@@ -108,6 +110,8 @@ def load_data(var_dict, file, model, drop):
     surface_vars = {x: ds[x].values.flatten() for x in var_dict["heightAboveGround"] + var_dict["surface"]}
     surface_vars['t2m'] = kelvin_to_celsius(surface_vars['t2m'])
     surface_vars['d2m'] = kelvin_to_celsius(surface_vars['d2m'])
+    os.remove(file)     # delete grib file
+
     if drop:
         dropped = var_dict["isobaricInhPa"] + ['hgt_above_sfc'] + ['dpt']
         return ds.drop_vars(dropped), df, surface_vars
