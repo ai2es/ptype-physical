@@ -33,7 +33,7 @@ def df_flatten(ds, varsP, vertical_level_name='isobaricInhPa'):
     return pd.DataFrame(flat_data, columns=cols)
 
 
-def kelvin_to_celcius(temp):
+def kelvin_to_celsius(temp):
     """ Convert Kelvin Temperatures to Celcius."""
     return temp - 273.15
 
@@ -87,7 +87,7 @@ def load_data(var_dict, file, model, drop):
             grib_data.append(grib)
     os.remove(glob.glob(file + '*.idx')[0])  # delete index file that is created the first time grib file is opened
     ds = xr.merge(grib_data, compat='override').load()
-    ds['t'].values = kelvin_to_celcius(ds['t'].values)
+    ds['t'].values = kelvin_to_celsius(ds['t'].values)
     if model == "rap":
         ds['dpt'] = dewpoint_from_relative_humidity(ds['t'] * units.degC, ds['r'].values / 100)
     elif model == "gfs":
@@ -101,13 +101,13 @@ def load_data(var_dict, file, model, drop):
         ds['dpt'] = (["isobaricInhPa", "latitude", "longitude"], dpt)
         ds = ds.rename_dims({'latitude': 'y', 'longitude': 'x'})
     else:
-        ds['dpt'].values = kelvin_to_celcius(ds['dpt'].values)
+        ds['dpt'].values = kelvin_to_celsius(ds['dpt'].values)
     ds['hgt_above_sfc'] = ds['gh'] - ds['orog']
     df = df_flatten(ds, ['t', 'dpt', 'u', 'v', 'hgt_above_sfc'])
 
     surface_vars = {x: ds[x].values.flatten() for x in var_dict["heightAboveGround"] + var_dict["surface"]}
-    surface_vars['t2m'] = kelvin_to_celcius(surface_vars['t2m'])
-    surface_vars['d2m'] = kelvin_to_celcius(surface_vars['d2m'])
+    surface_vars['t2m'] = kelvin_to_celsius(surface_vars['t2m'])
+    surface_vars['d2m'] = kelvin_to_celsius(surface_vars['d2m'])
     if drop:
         dropped = var_dict["isobaricInhPa"] + ['hgt_above_sfc'] + ['dpt']
         return ds.drop_vars(dropped), df, surface_vars
