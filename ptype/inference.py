@@ -23,12 +23,12 @@ def df_flatten(ds, varsP, vertical_level_name='isobaricInhPa'):
     Returns:
          Pandas Dataframe of flattened variables split out by variable name in format: <varName>_<pressure_level>
     """
-    l, cols = [], []
+    pressure_lev_data, cols = [], []
     for v in varsP:
         for p in ds[vertical_level_name].values:
             cols.append(f"{v}_{int(p)}")
-            l.append(ds[v].sel(isobaricInhPa=p).values.reshape(-1, 1))
-    flat_data = np.concatenate(l, axis=1)
+            pressure_lev_data.append(ds[v].sel(isobaricInhPa=p).values.reshape(-1, 1))
+    flat_data = np.concatenate(pressure_lev_data, axis=1)
 
     return pd.DataFrame(flat_data, columns=cols)
 
@@ -88,35 +88,38 @@ def load_data(var_dict, file, model, drop):
 
     for idx in glob.glob(file + '*.idx'):
         os.remove(idx)  # delete index files that are created when opening grib
-    ds = xr.merge(grib_data, compat='override').load()
-    ds['t'].values = kelvin_to_celsius(ds['t'].values)
+    nwp_dataset = xr.merge(grib_data, compat='override').load()
+    nwp_dataset['t'].values = kelvin_to_celsius(nwp_dataset['t'].values)
     if model == "rap":
-        ds['dpt'] = dewpoint_from_relative_humidity(ds['t'] * units.degC, ds['r'].values / 100)
+        nwp_dataset['dpt'] = dewpoint_from_relative_humidity(nwp_dataset['t'] * units.degC,
+                                                             nwp_dataset['r'].values / 100)
     elif model == "gfs":
-        z = np.zeros(shape=(ds['isobaricInhPa'].size, ds['latitude'].size, ds['longitude'].size))
+        z = np.zeros(shape=(nwp_dataset['isobaricInhPa'].size,
+                            nwp_dataset['latitude'].size,
+                            nwp_dataset['longitude'].size))
         for i in range(z.shape[1]):
             for j in range(z.shape[2]):
-                z[:, i, j] = ds['isobaricInhPa'].values
+                z[:, i, j] = nwp_dataset['isobaricInhPa'].values
         dpt = dewpoint_from_specific_humidity(z * units.hPa,
-                                              ds['t'].values * units.degC,
-                                              ds['q'].values * units('kg/kg'))
-        ds['dpt'] = (["isobaricInhPa", "latitude", "longitude"], dpt)
-        ds = ds.rename_dims({'latitude': 'y', 'longitude': 'x'})
+                                              nwp_dataset['t'].values * units.degC,
+                                              nwp_dataset['q'].values * units('kg/kg'))
+        nwp_dataset['dpt'] = (["isobaricInhPa", "latitude", "longitude"], dpt)
+        nwp_dataset = nwp_dataset.rename_dims({'latitude': 'y', 'longitude': 'x'})
     else:
-        ds['dpt'].values = kelvin_to_celsius(ds['dpt'].values)
-    ds['hgt_above_sfc'] = ds['gh'] - ds['orog']
-    df = df_flatten(ds, ['t', 'dpt', 'u', 'v', 'hgt_above_sfc'])
+        nwp_dataset['dpt'].values = kelvin_to_celsius(nwp_dataset['dpt'].values)
+    nwp_dataset['hgt_above_sfc'] = nwp_dataset['gh'] - nwp_dataset['orog']
+    flattened_df = df_flatten(nwp_dataset, ['t', 'dpt', 'u', 'v', 'hgt_above_sfc'])
 
-    surface_vars = {x: ds[x].values.flatten() for x in var_dict["heightAboveGround"] + var_dict["surface"]}
+    surface_vars = {x: nwp_dataset[x].values.flatten() for x in var_dict["heightAboveGround"] + var_dict["surface"]}
     surface_vars['t2m'] = kelvin_to_celsius(surface_vars['t2m'])
     surface_vars['d2m'] = kelvin_to_celsius(surface_vars['d2m'])
     os.remove(file)     # delete grib file
 
     if drop:
         dropped = var_dict["isobaricInhPa"] + ['hgt_above_sfc'] + ['dpt']
-        return ds.drop_vars(dropped), df, surface_vars
+        return nwp_dataset.drop_vars(dropped), flattened_df, surface_vars
     else:
-        return ds, df, surface_vars
+        return nwp_dataset, flattened_df, surface_vars
 
 
 def convert_and_interpolate(data, surface_data, pressure_levels, height_levels):
@@ -141,13 +144,13 @@ def convert_and_interpolate(data, surface_data, pressure_levels, height_levels):
     var_arrays = []
     variables = ['t', 'dpt', 'u', 'v']
     surface_variables = ['t2m', 'd2m', 'u10', 'v10']
-    x = data[cols['hgt_above_sfc']].values
+    height_data = data[cols['hgt_above_sfc']].values
 
     for v, sv in zip(variables, surface_variables):
-        y = data[cols[v]].values
-        arr = interpolate(x, y, height_levels)
-        arr[:, 0] = surface_data[sv]
-        var_arrays.append(arr)
+        pressure_level_data = data[cols[v]].values
+        height_interp_data = interpolate(height_data, pressure_level_data, height_levels)
+        height_interp_data[:, 0] = surface_data[sv]
+        var_arrays.append(height_interp_data)
 
     all_data = np.concatenate(var_arrays, axis=1)
 
@@ -196,7 +199,7 @@ def load_model(model_path):
     x_transformer = load_scaler(os.path.join(model_path, "scalers", "input_11.json"))
 
     model = CategoricalDNN(**conf["model"])
-    model.build_neural_network(268, 4)
+    model.build_neural_network(len(x_transformer.x_columns_), 4)
     model.model.load_weights(os.path.join(model_path, "models", "model_11.h5"))
 
     return model, x_transformer
