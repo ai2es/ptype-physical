@@ -12,6 +12,7 @@ import yaml
 import numba
 from numba import jit
 import glob
+import json
 
 
 def df_flatten(ds, varsP, vertical_level_name='isobaricInhPa'):
@@ -197,9 +198,10 @@ def load_model(model_path):
         conf = yaml.load(cf, Loader=yaml.FullLoader)
 
     x_transformer = load_scaler(os.path.join(model_path, "scalers", "input_11.json"))
-
+    with open(os.path.join(model_path, "scalers", "output_label_11.json")) as f:
+        output_scaler = json.load(f)
     model = CategoricalDNN(**conf["model"])
-    model.build_neural_network(len(x_transformer.x_columns_), 4)
+    model.build_neural_network(len(x_transformer.x_columns_), len(output_scaler['classes_']))
     model.model.load_weights(os.path.join(model_path, "models", "model_11.h5"))
 
     return model, x_transformer
