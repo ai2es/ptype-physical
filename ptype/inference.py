@@ -196,6 +196,7 @@ def load_model(model_path):
     config = os.path.join(model_path, "model.yml")
     with open(config) as cf:
         conf = yaml.load(cf, Loader=yaml.FullLoader)
+        conf['batch_size'] = 1000
 
     x_transformer = load_scaler(os.path.join(model_path, "scalers", "input_11.json"))
     with open(os.path.join(model_path, "scalers", "output_label_11.json")) as f:
