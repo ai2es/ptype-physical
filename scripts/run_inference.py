@@ -11,8 +11,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--config", help="Path to config file")
     args = parser.parse_args()
-    # with open(args.config) as config_file:
-    with open("/Users/cbecker/Desktop/Projects/ptype-physical/config/inference.yml") as config_file:
+    with open(args.config) as config_file:
         config = yaml.safe_load(config_file)
     username = os.environ.get('USER')
     out_path = config["out_path"].replace("username", username)
