@@ -15,3 +15,4 @@ bridgescaler
 herbie-data
 joblib
 numba
+dask-jobqueue
