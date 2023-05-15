@@ -1,16 +1,18 @@
-model: "nam"
-ML_model_path: "/glade/work/schreck/repos/evidential/main/results/ptype/classifier/"
-out_path: "/Users/username/scratch/ptype_output/"
+model: "rap"
+ML_model_path: "/Users/cbecker/Desktop/Projects/ptype-physical/classifier/"
+out_path: "/Users/username/Desktop/Projects/ptype-physical/data/"
 drop_input_data: True
+n_processors: 18      # Only used if use_dask=False (dask has its own parameters at bottom of config)
+use_dask: False
 
 dates:
-  start: "2022-03-17"
-  end: "2022-03-17"
+  start: "2022-12-27 22:00"
+  end: "2022-12-28 02:00"
   frequency: "1H"
 
 forecast_range:
   start: 1
-  end: 1
+  end: 18
   interval: 1
 
 height_levels:
@@ -40,3 +42,17 @@ variables:
       surface: ["orog", "crain", "csnow", "cicep", "cfrzr"]
       heightAboveGround: [ "t2m", "d2m", "u10", "v10" ]
       product: "conusnest.hiresf"
+
+dask_params:
+  PBS:
+    resource_spec: "select=1:ncpus=18:mem=64GB"
+    processes: 18
+    project: "NAML0001"
+    n_workers: 1
+    queue: "casper"
+    walltime: "08:00:00"
+    memory: "500GB"
+    interface: "ib0"
+    local_directory: "/glade/work/cbecker/conv_risk_intel/dask/"
+    log_directory: "/glade/work/cbecker/conv_risk_intel/dask_logs/"
+  n_jobs: 4
