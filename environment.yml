@@ -32,6 +32,7 @@ dependencies:
   - cfgrib
   - yaml
   - numba
+  - dask-jobqueue
   - pip:
     - pyarrow
     - tensorflow
