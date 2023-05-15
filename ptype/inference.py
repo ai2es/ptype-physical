@@ -1,5 +1,5 @@
 import pandas as pd
-from herbie import FastHerbie
+from herbie import Herbie
 from metpy.units import units
 from metpy.calc import dewpoint_from_relative_humidity, dewpoint_from_specific_humidity
 import numpy as np
@@ -39,27 +39,27 @@ def kelvin_to_celsius(temp):
     return temp - 273.15
 
 
-def download_data(date, model, product, save_dir, forecast_range):
+def download_data(date, model, product, save_dir, forecast_hour):
     """ Download data use Herbie for specified dates, model and forecast range.
     Args:
         date (List of pandas date times): List of Model initialization times
         model (str): Model to download data from. Supports "hrrr", "rap", or "nam"
         product (str): Product string for NWP grib data Herbie Accessor
         save_dir (str): Directory to save model data to
-        forecast_range (tuple): Tuple of (start forecast hour, end_forecast_hour)
+        forecast_hour (int): Forecast hour
     Returns:
         None
     """
-    forecast_hours = range(forecast_range["start"],
-                           forecast_range["end"] + forecast_range["interval"],
-                           forecast_range["interval"])
-    h = FastHerbie(DATES=[date],
-                   model=model,
-                   product=product,
-                   save_dir=save_dir,
-                   fxx=forecast_hours)
+
+    h = Herbie(date=date,
+               model=model,
+               product=product,
+               save_dir=save_dir,
+               fxx=forecast_hour)
     h.download()
-    return
+
+    return h.get_localFilePath()
+
 
 
 def load_data(var_dict, file, model, drop):
@@ -87,7 +87,7 @@ def load_data(var_dict, file, model, drop):
                     "filter_by_keys": {'typeOfLevel': key, 'shortName': var, 'stepType': 'instant'}})
             grib_data.append(grib)
 
-    for idx in glob.glob(file + '*.idx'):
+    for idx in glob.glob(str(file) + '*.idx'):
         os.remove(idx)  # delete index files that are created when opening grib
     nwp_dataset = xr.merge(grib_data, compat='override').load()
     nwp_dataset['t'].values = kelvin_to_celsius(nwp_dataset['t'].values)
@@ -114,7 +114,7 @@ def load_data(var_dict, file, model, drop):
     surface_vars = {x: nwp_dataset[x].values.flatten() for x in var_dict["heightAboveGround"] + var_dict["surface"]}
     surface_vars['t2m'] = kelvin_to_celsius(surface_vars['t2m'])
     surface_vars['d2m'] = kelvin_to_celsius(surface_vars['d2m'])
-    os.remove(file)     # delete grib file
+    os.remove(str(file))     # delete grib file
 
     if drop:
         dropped = var_dict["isobaricInhPa"] + ['hgt_above_sfc'] + ['dpt']
@@ -221,10 +221,13 @@ def grid_preditions(data, preds):
     ptype = preds.argmax(axis=1).reshape(-1, 1)
     preds = np.hstack([preds, ptype])
     reshaped_preds = preds.reshape(data['y'].size, data['x'].size, preds.shape[-1])
-    for i, v in enumerate(['Rain', 'Snow', 'Sleet', 'FreezingRain']):
+    for i, (long_v, v) in enumerate(zip(
+            ['rain', 'snow', 'ice pellets', 'freezing rain'], ['rain', 'snow', 'icep', 'fzrn'])):
 
-        data[v] = (['y', 'x'], reshaped_preds[:, :, i])                               # probability
-        data[f"C{v}"] = (['y', 'x'], np.where(reshaped_preds[:, :, -1] == i, 1, 0))   # categorical
+        data[f"ML_{v}"] = (['y', 'x'], reshaped_preds[:, :, i])                               # ML probability
+        data[f"ML_{v}"].attrs = {"Description": f"Machine Learned Probability of {long_v}"}
+        data[f"ML_c{v}"] = (['y', 'x'], np.where(reshaped_preds[:, :, -1] == i, 1, 0))        # ML categorical
+        data[f"ML_c{v}"].attrs = {"Description": f"Machine Learned Categorical {long_v}"}
 
     return data
 
@@ -243,9 +246,10 @@ def save_data(dataset, out_path, date, model, forecast_hour):
         None
     """
     dir_str = date.strftime("%Y%m%d")
-    date_str = date.strftime(f"%Y%m%d_{forecast_hour:02}00")
-    file_str = f"ptype_predictions_{model}_{date_str}.nc"
-    full_path = os.path.join(out_path, model, dir_str, file_str)
+    model_run_str = date.strftime("%H%M")
+    os.makedirs(os.path.join(out_path, model, dir_str, model_run_str), exist_ok=True)
+    file_str = f"ptype_predictions_{model}{model_run_str}z_fh{forecast_hour:02}.nc"
+    full_path = os.path.join(out_path, model, dir_str, model_run_str, file_str)
     encoding_vars = [v for v in list(dataset.data_vars)]
     encoding = {var: {"zlib": True, "complevel": 4, "least_significant_digit": 4} for var in encoding_vars}
     dataset.to_netcdf(full_path, encoding=encoding)
@@ -254,20 +258,5 @@ def save_data(dataset, out_path, date, model, forecast_hour):
     return
 
 
-def get_file_paths(base_path, model, date):
-    """
-    Retrieve file paths of grib data for specified date.
-    Args:
-        base_path: Base path to NWP data storage.
-        model: NWP model name.
-        date: Datetime object for grib data.
-
-    Returns:
-        List of file names of grib data to process.
-    """
-    files = sorted([os.path.join(base_path, model, date.strftime("%Y%m%d"), f) for f in
-                    os.listdir(os.path.join(base_path, model, date.strftime("%Y%m%d")))])
-
-    return files
 
 
