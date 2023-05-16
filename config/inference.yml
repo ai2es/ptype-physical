@@ -4,6 +4,7 @@ out_path: "/Users/username/Desktop/Projects/ptype-physical/data/"
 drop_input_data: True
 n_processors: 18      # Only used if use_dask=False (dask has its own parameters at bottom of config)
 use_dask: False
+save_format: "zarr"   # Supports "zarr" and "netcdf"
 
 dates:
   start: "2022-12-27 22:00"

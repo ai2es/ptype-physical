@@ -41,7 +41,8 @@ def main(config, username, date, forecast_hour):
               out_path=out_path,
               date=date,
               model=config["model"],
-              forecast_hour=forecast_hour)
+              forecast_hour=forecast_hour,
+              save_format=config["save_format"])
     del ds, df, surface_vars, data, x_data, predictions, gridded_preds
 
 

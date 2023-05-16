@@ -232,7 +232,7 @@ def grid_preditions(data, preds):
     return data
 
 
-def save_data(dataset, out_path, date, model, forecast_hour):
+def save_data(dataset, out_path, date, model, forecast_hour, save_format):
     """
     Save ML predictions and surface data as netCDf file.
     Args:
@@ -248,11 +248,14 @@ def save_data(dataset, out_path, date, model, forecast_hour):
     dir_str = date.strftime("%Y%m%d")
     model_run_str = date.strftime("%H%M")
     os.makedirs(os.path.join(out_path, model, dir_str, model_run_str), exist_ok=True)
-    file_str = f"ptype_predictions_{model}{model_run_str}z_fh{forecast_hour:02}.nc"
+    file_str = f"ptype_predictions_{model}{model_run_str}z_fh{forecast_hour:02}"
     full_path = os.path.join(out_path, model, dir_str, model_run_str, file_str)
     encoding_vars = [v for v in list(dataset.data_vars)]
     encoding = {var: {"zlib": True, "complevel": 4, "least_significant_digit": 4} for var in encoding_vars}
-    dataset.to_netcdf(full_path, encoding=encoding)
+    if save_format == "netcdf":
+        dataset.to_netcdf(full_path + ".nc", encoding=encoding)
+    elif save_format == "zarr":
+        dataset.to_zarr(full_path + ".zarr", encoding=encoding)
     print(f"Successfully wrote: {full_path}")
 
     return
