@@ -184,7 +184,7 @@ def transform_data(input_data, transformer):
     return transformed_data.values
 
 
-def load_model(model_path):
+def load_model(model_path, model_file, input_scaler_file, output_scaler_file):
     """
     Load ML model and bridgescaler object.
     Args:
@@ -198,12 +198,12 @@ def load_model(model_path):
         conf = yaml.load(cf, Loader=yaml.FullLoader)
         conf['batch_size'] = 1000
 
-    x_transformer = load_scaler(os.path.join(model_path, "scalers", "input_11.json"))
-    with open(os.path.join(model_path, "scalers", "output_label_11.json")) as f:
+    x_transformer = load_scaler(os.path.join(model_path, "scalers", input_scaler_file))
+    with open(os.path.join(model_path, "scalers", output_scaler_file)) as f:
         output_scaler = json.load(f)
     model = CategoricalDNN(**conf["model"])
     model.build_neural_network(len(x_transformer.x_columns_), len(output_scaler['classes_']))
-    model.model.load_weights(os.path.join(model_path, "models", "model_11.h5"))
+    model.model.load_weights(os.path.join(model_path, "models", model_file))
 
     return model, x_transformer
 

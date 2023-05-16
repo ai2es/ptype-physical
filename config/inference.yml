@@ -1,5 +1,8 @@
 model: "rap"
 ML_model_path: "/Users/cbecker/Desktop/Projects/ptype-physical/classifier/"
+model_file: "model_11.h5"
+input_scaler_file: "input_11.json"
+output_scaler_file: "output_label_11.json"
 out_path: "/Users/username/Desktop/Projects/ptype-physical/data/"
 drop_input_data: True
 n_processors: 18      # Only used if use_dask=False (dask has its own parameters at bottom of config)

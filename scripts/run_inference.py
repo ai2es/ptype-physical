@@ -14,7 +14,10 @@ def main(config, username, date, forecast_hour):
 
     out_path = config["out_path"].replace("username", username)
     nwp_model = config["model"]
-    model, transformer = load_model(model_path=config["ML_model_path"])
+    model, transformer = load_model(model_path=config["ML_model_path"],
+                                    model_file=config["model_file"],
+                                    input_scaler_file=config["input_scaler_file"],
+                                    output_scaler_file=config["output_scaler_file"])
     file = download_data(date=date,
                          model=config["model"],
                          product=config["variables"]["model"][nwp_model]["product"],
