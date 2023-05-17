@@ -14,6 +14,8 @@ from numba import jit
 import glob
 import json
 import zarr
+import pygrib
+from pyproj import CRS, Transformer
 
 def df_flatten(ds, varsP, vertical_level_name='isobaricInhPa'):
     """  Split pressure level variables by pressure level, reassign and return as flattened Dataframe.
@@ -114,13 +116,46 @@ def load_data(var_dict, file, model, drop):
     surface_vars = {x: nwp_dataset[x].values.flatten() for x in var_dict["heightAboveGround"] + var_dict["surface"]}
     surface_vars['t2m'] = kelvin_to_celsius(surface_vars['t2m'])
     surface_vars['d2m'] = kelvin_to_celsius(surface_vars['d2m'])
-    os.remove(str(file))     # delete grib file
+
+    nwp_dataset = add_coord_data(file, nwp_dataset)
+    os.remove(str(file))  # delete grib file
 
     if drop:
         dropped = var_dict["isobaricInhPa"] + ['hgt_above_sfc'] + ['dpt']
         return nwp_dataset.drop_vars(dropped), flattened_df, surface_vars
     else:
         return nwp_dataset, flattened_df, surface_vars
+
+
+def add_coord_data(file_path, grib_data):
+    """
+    Add cf-style projection information and projection coordinates.
+    Args:
+        file_path (str): Path to grib2 file
+        grib_data (xr.Dataset): Dataset to add coordinate information to
+
+    Returns:
+
+    """
+    with pygrib.open(str(file_path)) as grb:
+        msg = grb.message(1)
+        cf_params = CRS(msg.projparams).to_cf()
+
+    grib_data.attrs['projection'] = str(cf_params)
+
+    if msg.projparams['proj'] == 'lcc':
+
+        transformer = Transformer.from_crs(CRS("lonlat"), CRS(msg.projparams))
+        x_proj_coord, y_proj_coord = transformer.transform(grib_data['longitude'], grib_data['latitude'])
+        grib_data["y_projection_coordinate"] = ('y', y_proj_coord[:, 0])
+        grib_data["x_projection_coordinate"] = ('x', x_proj_coord[0, :])
+        grib_data["y_projection_coordinate"].attrs["Description"] = "Lambert Conformal Conic y-projection coordinates"
+        grib_data["x_projection_coordinate"].attrs["Description"] = "Lambert Conformal Conic x-projection coordinates"
+
+        return grib_data.set_coords(["y_projection_coordinate", "x_projection_coordinate"])
+
+    else:
+        return grib_data
 
 
 def convert_and_interpolate(data, surface_data, pressure_levels, height_levels):
@@ -222,14 +257,27 @@ def grid_preditions(data, preds):
     preds = np.hstack([preds, ptype])
     reshaped_preds = preds.reshape(data['y'].size, data['x'].size, preds.shape[-1])
     for i, (long_v, v) in enumerate(zip(
-            ['rain', 'snow', 'ice pellets', 'freezing rain'], ['rain', 'snow', 'icep', 'fzrn'])):
+            ['rain', 'snow', 'ice pellets', 'freezing rain'], ['rain', 'snow', 'icep', 'frzr'])):
 
-        data[f"ML_{v}"] = (['y', 'x'], reshaped_preds[:, :, i])                               # ML probability
+        data[f"ML_{v}"] = (['y', 'x'], reshaped_preds[:, :, i].astype('float32'))                       # ML probability
         data[f"ML_{v}"].attrs = {"Description": f"Machine Learned Probability of {long_v}"}
-        data[f"ML_c{v}"] = (['y', 'x'], np.where(reshaped_preds[:, :, -1] == i, 1, 0))        # ML categorical
+        data[f"ML_c{v}"] = (['y', 'x'], np.where(reshaped_preds[:, :, -1] == i, 1, 0).astype('uint8'))  # ML categorical
         data[f"ML_c{v}"].attrs = {"Description": f"Machine Learned Categorical {long_v}"}
 
-    return data
+    for var in ["crain", "csnow", "cicep", "cfrzr"]:
+        if var in list(data.data_vars):
+            data[var] = data[var].astype('uint8')
+
+    for v in data.coords:
+        if data[v].dtype == 'float64':
+            data[v] = data[v].astype('float32')
+
+    drop_vars = []
+    for v in ["isobaricInhPa", "heightAboveGround", "surface"]:
+        if v in data.coords:
+            drop_vars.append(v)
+
+    return data.drop(drop_vars)
 
 
 def save_data(dataset, out_path, date, model, forecast_hour, save_format):
@@ -245,11 +293,15 @@ def save_data(dataset, out_path, date, model, forecast_hour, save_format):
     Returns:
         None
     """
+    date_str = date.strftime("%Y-%m-%d")
     dir_str = date.strftime("%Y%m%d")
     model_run_str = date.strftime("%H%M")
     os.makedirs(os.path.join(out_path, model, dir_str, model_run_str), exist_ok=True)
-    file_str = f"ptype_predictions_{model}{model_run_str}z_fh{forecast_hour:02}"
+    file_str = f"MILES_ptype_{model}_{date_str}_{model_run_str}_f{forecast_hour:02}"
     full_path = os.path.join(out_path, model, dir_str, model_run_str, file_str)
+
+    dataset = dataset.expand_dims('time')
+
     encoding_vars = [v for v in list(dataset.data_vars)]
     if save_format == "netcdf":
         encoding = {var: {"zlib": True, "complevel": 4, "least_significant_digit": 4} for var in encoding_vars}
