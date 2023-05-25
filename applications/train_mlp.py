@@ -14,7 +14,7 @@ from argparse import ArgumentParser
 
 from ptype.callbacks import get_callbacks, MetricsCallback
 from ptype.models import DenseNeuralNetwork
-from ptype.data import load_ptype_data_day, preprocess_data
+from ptype.data import load_ptype_uq, load_ptype_data_day, preprocess_data
 
 from evml.keras.callbacks import ReportEpoch
 from evml.keras.models import calc_prob_uncertainty
@@ -79,7 +79,8 @@ def trainer(conf, evaluate=True, data_seed=0):
         use_uncertainty = True
     else:
         use_uncertainty = False
-    data = load_ptype_data_day(conf, data_split=0, verbose=1)
+    #data = load_ptype_data_day(conf, data_split=0, verbose=1)
+    data = load_ptype_uq(conf, data_split=0, verbose=1)
     # check if we should scale the input data by groups
     scale_groups = [] if "scale_groups" not in conf else conf["scale_groups"]
     groups = [conf[g] for g in scale_groups]

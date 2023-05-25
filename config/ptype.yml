@@ -1,15 +1,20 @@
 seed: 1000
 verbose: 0
-save_loc: "/glade/work/schreck/repos/ptype-physical/results/1215_test"
+save_loc: "/glade/p/cisl/aiml/ai2es/winter_ptypes/models/classifier_weighted" 
 asos_path: '/glade/p/cisl/aiml/ai2es/winter_ptypes/precip_rap/ASOS_mixture/'
 mping_path: '/glade/p/cisl/aiml/ai2es/winter_ptypes/precip_rap/mPING_mixture/'
-data_path: '/glade/p/cisl/aiml/ai2es/winter_ptypes/precip_rap/mPING_hourafter_interpolated/'
-n_splits: 10
-train_size1: 0.938
-train_size2: 0.885
+data_path: '/glade/p/cisl/aiml/ai2es/winter_ptypes/ptype_qc/mPING_interpolated_QC2.parquet'
+train_size1: 0.9 # When used with cutoff 2020-07-01 gives about 60/40 train/test split
+train_size2: 0.0
+qc: 3.0 # 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0
+test_cutoff: "2020-07-01"
 ptypes: ['ra_percent', 'sn_percent', 'pl_percent', 'fzra_percent']
 metric: "val_ave_acc"
 direction: "max"
+
+ensemble:
+    n_splits: 1
+    mc_steps: 0
 
 model:
     hidden_layers: 11
@@ -29,6 +34,7 @@ model:
     epochs: 1000
     verbose: 0
     
+scaler_type: "quantile" # standard, robust, minmax, quantile, quantile-uniform
 scale_groups: ["TEMP_C", "T_DEWPOINT_C", "UGRD_m/s", "VGRD_m/s"]
 TEMP_C: [
     'TEMP_C_0_m',
@@ -51,53 +57,7 @@ TEMP_C: [
     'TEMP_C_4250_m',
     'TEMP_C_4500_m',
     'TEMP_C_4750_m',
-    'TEMP_C_5000_m',
-    'TEMP_C_5250_m',
-    'TEMP_C_5500_m',
-    'TEMP_C_5750_m',
-    'TEMP_C_6000_m',
-    'TEMP_C_6250_m',
-    'TEMP_C_6500_m',
-    'TEMP_C_6750_m',
-    'TEMP_C_7000_m',
-    'TEMP_C_7250_m',
-    'TEMP_C_7500_m',
-    'TEMP_C_7750_m',
-    'TEMP_C_8000_m',
-    'TEMP_C_8250_m',
-    'TEMP_C_8500_m',
-    'TEMP_C_8750_m',
-    'TEMP_C_9000_m',
-    'TEMP_C_9250_m',
-    'TEMP_C_9500_m',
-    'TEMP_C_9750_m',
-    'TEMP_C_10000_m',
-    'TEMP_C_10250_m',
-    'TEMP_C_10500_m',
-    'TEMP_C_10750_m',
-    'TEMP_C_11000_m',
-    'TEMP_C_11250_m',
-    'TEMP_C_11500_m',
-    'TEMP_C_11750_m',
-    'TEMP_C_12000_m',
-    'TEMP_C_12250_m',
-    'TEMP_C_12500_m',
-    'TEMP_C_12750_m',
-    'TEMP_C_13000_m',
-    'TEMP_C_13250_m',
-    'TEMP_C_13500_m',
-    'TEMP_C_13750_m',
-    'TEMP_C_14000_m',
-    'TEMP_C_14250_m',
-    'TEMP_C_14500_m',
-    'TEMP_C_14750_m',
-    'TEMP_C_15000_m',
-    'TEMP_C_15250_m',
-    'TEMP_C_15500_m',
-    'TEMP_C_15750_m',
-    'TEMP_C_16000_m',
-    'TEMP_C_16250_m',
-    'TEMP_C_16500_m'
+    'TEMP_C_5000_m'
 ]
 
 T_DEWPOINT_C: [ 
@@ -121,53 +81,7 @@ T_DEWPOINT_C: [
     'T_DEWPOINT_C_4250_m',
     'T_DEWPOINT_C_4500_m',
     'T_DEWPOINT_C_4750_m',
-    'T_DEWPOINT_C_5000_m',
-    'T_DEWPOINT_C_5250_m',
-    'T_DEWPOINT_C_5500_m',
-    'T_DEWPOINT_C_5750_m',
-    'T_DEWPOINT_C_6000_m',
-    'T_DEWPOINT_C_6250_m',
-    'T_DEWPOINT_C_6500_m',
-    'T_DEWPOINT_C_6750_m',
-    'T_DEWPOINT_C_7000_m',
-    'T_DEWPOINT_C_7250_m',
-    'T_DEWPOINT_C_7500_m',
-    'T_DEWPOINT_C_7750_m',
-    'T_DEWPOINT_C_8000_m',
-    'T_DEWPOINT_C_8250_m',
-    'T_DEWPOINT_C_8500_m',
-    'T_DEWPOINT_C_8750_m',
-    'T_DEWPOINT_C_9000_m',
-    'T_DEWPOINT_C_9250_m',
-    'T_DEWPOINT_C_9500_m',
-    'T_DEWPOINT_C_9750_m',
-    'T_DEWPOINT_C_10000_m',
-    'T_DEWPOINT_C_10250_m',
-    'T_DEWPOINT_C_10500_m',
-    'T_DEWPOINT_C_10750_m',
-    'T_DEWPOINT_C_11000_m',
-    'T_DEWPOINT_C_11250_m',
-    'T_DEWPOINT_C_11500_m',
-    'T_DEWPOINT_C_11750_m',
-    'T_DEWPOINT_C_12000_m',
-    'T_DEWPOINT_C_12250_m',
-    'T_DEWPOINT_C_12500_m',
-    'T_DEWPOINT_C_12750_m',
-    'T_DEWPOINT_C_13000_m',
-    'T_DEWPOINT_C_13250_m',
-    'T_DEWPOINT_C_13500_m',
-    'T_DEWPOINT_C_13750_m',
-    'T_DEWPOINT_C_14000_m',
-    'T_DEWPOINT_C_14250_m',
-    'T_DEWPOINT_C_14500_m',
-    'T_DEWPOINT_C_14750_m',
-    'T_DEWPOINT_C_15000_m',
-    'T_DEWPOINT_C_15250_m',
-    'T_DEWPOINT_C_15500_m',
-    'T_DEWPOINT_C_15750_m',
-    'T_DEWPOINT_C_16000_m',
-    'T_DEWPOINT_C_16250_m',
-    'T_DEWPOINT_C_16500_m'
+    'T_DEWPOINT_C_5000_m'
 ]
 
 UGRD_m/s: [ 
@@ -191,53 +105,7 @@ UGRD_m/s: [
     'UGRD_m/s_4250_m',
     'UGRD_m/s_4500_m',
     'UGRD_m/s_4750_m',
-    'UGRD_m/s_5000_m',
-    'UGRD_m/s_5250_m',
-    'UGRD_m/s_5500_m',
-    'UGRD_m/s_5750_m',
-    'UGRD_m/s_6000_m',
-    'UGRD_m/s_6250_m',
-    'UGRD_m/s_6500_m',
-    'UGRD_m/s_6750_m',
-    'UGRD_m/s_7000_m',
-    'UGRD_m/s_7250_m',
-    'UGRD_m/s_7500_m',
-    'UGRD_m/s_7750_m',
-    'UGRD_m/s_8000_m',
-    'UGRD_m/s_8250_m',
-    'UGRD_m/s_8500_m',
-    'UGRD_m/s_8750_m',
-    'UGRD_m/s_9000_m',
-    'UGRD_m/s_9250_m',
-    'UGRD_m/s_9500_m',
-    'UGRD_m/s_9750_m',
-    'UGRD_m/s_10000_m',
-    'UGRD_m/s_10250_m',
-    'UGRD_m/s_10500_m',
-    'UGRD_m/s_10750_m',
-    'UGRD_m/s_11000_m',
-    'UGRD_m/s_11250_m',
-    'UGRD_m/s_11500_m',
-    'UGRD_m/s_11750_m',
-    'UGRD_m/s_12000_m',
-    'UGRD_m/s_12250_m',
-    'UGRD_m/s_12500_m',
-    'UGRD_m/s_12750_m',
-    'UGRD_m/s_13000_m',
-    'UGRD_m/s_13250_m',
-    'UGRD_m/s_13500_m',
-    'UGRD_m/s_13750_m',
-    'UGRD_m/s_14000_m',
-    'UGRD_m/s_14250_m',
-    'UGRD_m/s_14500_m',
-    'UGRD_m/s_14750_m',
-    'UGRD_m/s_15000_m',
-    'UGRD_m/s_15250_m',
-    'UGRD_m/s_15500_m',
-    'UGRD_m/s_15750_m',
-    'UGRD_m/s_16000_m',
-    'UGRD_m/s_16250_m',
-    'UGRD_m/s_16500_m'
+    'UGRD_m/s_5000_m'
  ]
 
 VGRD_m/s: [ 
@@ -261,53 +129,7 @@ VGRD_m/s: [
     'VGRD_m/s_4250_m',
     'VGRD_m/s_4500_m',
     'VGRD_m/s_4750_m',
-    'VGRD_m/s_5000_m',
-    'VGRD_m/s_5250_m',
-    'VGRD_m/s_5500_m',
-    'VGRD_m/s_5750_m',
-    'VGRD_m/s_6000_m',
-    'VGRD_m/s_6250_m',
-    'VGRD_m/s_6500_m',
-    'VGRD_m/s_6750_m',
-    'VGRD_m/s_7000_m',
-    'VGRD_m/s_7250_m',
-    'VGRD_m/s_7500_m',
-    'VGRD_m/s_7750_m',
-    'VGRD_m/s_8000_m',
-    'VGRD_m/s_8250_m',
-    'VGRD_m/s_8500_m',
-    'VGRD_m/s_8750_m',
-    'VGRD_m/s_9000_m',
-    'VGRD_m/s_9250_m',
-    'VGRD_m/s_9500_m',
-    'VGRD_m/s_9750_m',
-    'VGRD_m/s_10000_m',
-    'VGRD_m/s_10250_m',
-    'VGRD_m/s_10500_m',
-    'VGRD_m/s_10750_m',
-    'VGRD_m/s_11000_m',
-    'VGRD_m/s_11250_m',
-    'VGRD_m/s_11500_m',
-    'VGRD_m/s_11750_m',
-    'VGRD_m/s_12000_m',
-    'VGRD_m/s_12250_m',
-    'VGRD_m/s_12500_m',
-    'VGRD_m/s_12750_m',
-    'VGRD_m/s_13000_m',
-    'VGRD_m/s_13250_m',
-    'VGRD_m/s_13500_m',
-    'VGRD_m/s_13750_m',
-    'VGRD_m/s_14000_m',
-    'VGRD_m/s_14250_m',
-    'VGRD_m/s_14500_m',
-    'VGRD_m/s_14750_m',
-    'VGRD_m/s_15000_m',
-    'VGRD_m/s_15250_m',
-    'VGRD_m/s_15500_m',
-    'VGRD_m/s_15750_m',
-    'VGRD_m/s_16000_m',
-    'VGRD_m/s_16250_m',
-    'VGRD_m/s_16500_m'
+    'VGRD_m/s_5000_m'
  ]
  
 callbacks:

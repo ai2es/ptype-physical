@@ -98,21 +98,25 @@ def plot_scatter(
 
 
 def plot_confusion_matrix(
-    data, classes, font_size=10, normalize=False, cmap=plt.cm.Blues, save_location=None
+    data, classes, font_size=10, normalize=False, axis=1, cmap=plt.cm.Blues, save_location=None
 ):
     """
     Function to plot a confusion matrix.
     """
 
     fig, axs = plt.subplots(
-        nrows=1, ncols=3, figsize=(10, 3.5), sharex="col", sharey="row"
+        nrows=1, ncols=len(data), figsize=(10, 3.5), sharex="col", sharey="row"
     )
 
     for i, (key, ds) in enumerate(data.items()):
         ax = axs[i]
         cm = confusion_matrix(ds["true_label"], ds["pred_label"])
+            
         if normalize:
-            cm = cm.astype("float") / cm.sum(axis=1)[:, np.newaxis]
+            if axis == 1:
+                cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+            else:
+                cm = cm.astype('float') / cm.sum(axis=0)[np.newaxis, :]
 
         im = ax.imshow(cm, interpolation="nearest", cmap=cmap, vmin=0, vmax=1)
         ax.figure.colorbar(im, ax=ax, shrink=0.80)
