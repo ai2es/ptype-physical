@@ -3,7 +3,7 @@ import os
 import yaml
 import pandas as pd
 from ptype.inference import download_data, load_data, convert_and_interpolate
-from ptype.inference import load_model, transform_data, grid_preditions, save_data
+from ptype.inference import load_model, transform_data, grid_predictions, save_data
 import itertools
 from multiprocessing import Pool
 from dask.distributed import Client
@@ -38,7 +38,7 @@ def main(config, username, date, forecast_hour):
                             transformer=transformer)
 
     predictions = model.predict(x_data)
-    gridded_preds = grid_preditions(data=ds,
+    gridded_preds = grid_predictions(data=ds,
                                     preds=predictions)
     save_data(dataset=gridded_preds,
               out_path=out_path,
