@@ -76,7 +76,7 @@ if __name__ == "__main__":
         print(f"Use this link to monitor the workload: {cluster.dashboard_link}")
         tasks = []
         for arguments in main_args:
-            tasks.append(client.submit(main, arguments))
+            tasks.append(client.submit(main, *arguments))
         _ = [tasks[i].result() for i in range(len(tasks))]
 
     else:
