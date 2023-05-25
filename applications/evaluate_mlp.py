@@ -21,7 +21,7 @@ from ptype.plotting import (
     labels_video,
     video,
 )
-from ptype.data import load_ptype_data_day, preprocess_data
+from ptype.data import load_ptype_uq, load_ptype_data_day, preprocess_data
 from evml.keras.models import calc_prob_uncertainty
 
 from hagelslag.evaluation.ProbabilityMetrics import DistributedROC
@@ -50,7 +50,7 @@ def evaluate(conf, reevaluate=False):
             use_uncertainty = True
         else:
             use_uncertainty = False
-        data = load_ptype_data_day(conf, data_split=0, verbose=1)
+        data = load_ptype_uq(conf, data_split=0, verbose=1)
         scaled_data, scalers = preprocess_data(
             data,
             input_features,
