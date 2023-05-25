@@ -166,11 +166,11 @@ class DenseNeuralNetwork(object):
                 beta_1=self.adam_beta_1,
                 beta_2=self.adam_beta_2,
                 epsilon=self.epsilon,
-                decay=self.decay,
+                #decay_rate=self.decay,
             )
         elif self.optimizer == "sgd":
             self.optimizer_obj = SGD(
-                learning_rate=self.lr, momentum=self.sgd_momentum, decay=self.decay
+                learning_rate=self.lr, momentum=self.sgd_momentum, #decay_rate=self.decay
             )
 
         self.model.build((self.batch_size, inputs))
