@@ -11,6 +11,7 @@ from sklearn.preprocessing import (
     OneHotEncoder,
     LabelEncoder,
     RobustScaler,
+    QuantileTransformer
 )
 from bridgescaler.group import GroupMinMaxScaler, GroupRobustScaler, GroupStandardScaler
 from sklearn.model_selection import GroupShuffleSplit
@@ -105,9 +106,18 @@ def load_ptype_data_subset(
     return data
 
 
-def load_ptype_data_day(conf, data_split=0, verbose=0):
+def load_ptype_data_day(conf, data_split=0, verbose=0, drop_mixed = False):
 
-    if not os.path.isfile(os.path.join(conf["data_path"], "cached.parquet")):
+    if "parquet" in conf["data_path"]:
+        df = pd.read_parquet(conf["data_path"])
+        #cond1 = (df["datetime"].apply(lambda x: str(x).split(" ")[0]) < "2020-07-01")
+        #cond2 = (df[["usa", "wetbulb5.0_filter"]].sum(axis = 1) > 0.0)
+        cond2 = df[f"wetbulb5.0_filter"] == 0.0
+        cond3 = df['usa'] == 1.0
+        df = df[cond2 & cond3].copy()
+        print(df.shape)
+    
+    elif not os.path.isfile(os.path.join(conf["data_path"], "cached.parquet")):
         df = pd.concat(
             [
                 pd.read_parquet(x)
@@ -117,8 +127,20 @@ def load_ptype_data_day(conf, data_split=0, verbose=0):
             ]
         )
         df.to_parquet(os.path.join(conf["data_path"], "cached.parquet"))
+        
     else:
         df = pd.read_parquet(os.path.join(conf["data_path"], "cached.parquet"))
+        
+        
+    # Drop mixed cases
+    if drop_mixed:
+        logger.info("Dropping data points with mixed observations")
+        c1 = df['ra_percent'] == 1.0
+        c2 = df['sn_percent'] == 1.0
+        c3 = df['pl_percent'] == 1.0
+        c4 = df['fzra_percent'] == 1.0
+        condition = c1 | c2 | c3 | c4
+        df = df[condition].copy()
 
     # Split and preprocess the data
     df["day"] = df["datetime"].apply(lambda x: str(x).split(" ")[0])
@@ -173,6 +195,7 @@ def preprocess_data(
     scaler_type="standard",
     encoder_type="onehot",
     groups=[],
+    seed=1000
 ):
     """
     Function to select features and scale data for ML
@@ -189,17 +212,28 @@ def preprocess_data(
     groupby = len(groups)
 
     scalar_obs = {
-        "minmax": MinMaxScaler if not groupby else GroupMinMaxScaler,
-        "standard": StandardScaler if not groupby else GroupStandardScaler,
-        "robust": RobustScaler if not groupby else GroupRobustScaler,
+        "normalize": MinMaxScaler() if not groupby else GroupMinMaxScaler(),
+        "symmetric": MinMaxScaler((-1, 1)) if not groupby else GroupMinMaxScaler((-1, 1)),
+        "standard": StandardScaler() if not groupby else GroupStandardScaler(),
+        "robust": RobustScaler() if not groupby else GroupRobustScaler(),
+        "quantile": QuantileTransformer(
+            n_quantiles=1000, 
+            random_state=seed, 
+            output_distribution = "normal"
+        ),
+        "quantile-uniform": QuantileTransformer(
+            n_quantiles=1000, 
+            random_state=seed, 
+            output_distribution = "uniform"
+        )
     }
     scalers, scaled_data = {}, {}
-    scalers["input"] = scalar_obs[scaler_type]()
+    scalers["input"] = scalar_obs[scaler_type]
     scalers["output_label"] = LabelEncoder()
     if encoder_type == "onehot":
         scalers["output_onehot"] = OneHotEncoder(sparse=False)
 
-    if groupby:
+    if groupby and not "quantile" in scaler_type:
         scaled_data["train_x"] = pd.DataFrame(
             scalers["input"].fit_transform(
                 data["train"][input_features], groups=groups
