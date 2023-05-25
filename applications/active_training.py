@@ -12,7 +12,7 @@ import pandas as pd
 from ptype.callbacks import get_callbacks, MetricsCallback
 from ptype.models import DenseNeuralNetwork
 from pathlib import Path
-from ptype.data import load_ptype_data_day, preprocess_data
+from ptype.data import load_ptype_uq, load_ptype_data_day, preprocess_data
 
 from evml.keras.callbacks import ReportEpoch
 from evml.keras.models import calc_prob_uncertainty
@@ -287,7 +287,7 @@ if __name__ == "__main__":
     )
     output_features = conf["ptypes"]
     metric = conf["metric"]
-    data = load_ptype_data_day(conf, data_split=0, verbose=1)
+    data = load_ptype_uq(conf, data_split=0, verbose=1)
     data["train"] = pd.concat([data["train"], data["val"]])
     del data["val"]
     
