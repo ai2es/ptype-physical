@@ -75,3 +75,57 @@ python applications/active_training.py --help
 ```
 
 ## Config file
+
+## Inference 
+
+The P-type models can currently be run historically on using the High Resolution Rapid Refresh (HRRR), Rapid Refresh 
+(RAP), or Global Forecast System (GFS) models. All data is downloaded in GRIB format and automatically deleted from the
+users space. Data is downloaded using the [Herbie-data](https://herbie.readthedocs.io/en/stable/) package. Data can be 
+processed in parallel using either standard Python multiprocessing or using dask (better for large historical runs).
+
+The output format for the prediction files is:
+
+`/glade/scratch/username/ptype_output/{nwp_model}/{init_day}/{init_hour}/ptype_predictions_{nwp_model}{init_hour}z_fh{forecast_hour}.nc`
+
+The content of each file consists of the following (can be slightly modified in configuration file)
+
+* Probability of precipitation for rain, snow, sleet, and freezing rain.
+* ML categorical precipitation type (max probability)
+* NWP categorical precipitation type (from model used for input)
+* Orography
+* 2m temperature and dewpoint, 10m winds (other variables can be added in configuration file)
+
+### Configuration file for inference: /config/inference.yml
+
+* **model** 
+  * supports "hrrr", "gfs", "rap"
+* **ML_model_path**
+  * Path to ML model
+* **out_path** 
+  * Base save path
+* **drop_input_data**
+  * Boolean (whether or not to save vertical profile data used for mdoel input)
+  * Setting this to True greatly increase file size
+* **n_processors**
+  *  Number of processors to use if using standard Python Multiprocessing (ignored if use_dask=True)
+* **use_dask**
+  * Boolean (True uses Dask for parallelizaion, False uses standard Multiprocessing)
+* **dates**
+  * Dictionary for starting and ending _model initialization times_ (inclusive)
+* **forecast_range**
+  * Dictionary for _forecast hours_ (inclusive) for each model initialzation time
+* **height_levels**
+  * Dictionary for model height levels needed for input into the ML model
+* **variables**
+  * Dictionary of variables and input needed to load data for each of the NWP models
+  * All NWP models don't all have the same variables so different ones are needed 
+  (specifically ones to derive dewpoint)
+  * "product" comes from the [herbie](https://herbie.readthedocs.io/en/stable/) API
+  * Other variables can be added 
+* **dask_params**
+  * Parameters to be used if **use_dask**=True
+  * Specific for NCARs Casper Cluster
+
+
+
+
