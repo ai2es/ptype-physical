@@ -243,7 +243,7 @@ def load_model(model_path, model_file, input_scaler_file, output_scaler_file):
     return model, x_transformer
 
 
-def grid_preditions(data, preds):
+def grid_predictions(data, preds):
     """
     Populate gridded xarray dataset with ML probabilities and categorical predictions as separate variables.
     Args:
