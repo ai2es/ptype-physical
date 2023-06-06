@@ -1,6 +1,6 @@
 seed: 1000
 verbose: 0
-save_loc: "" #"/glade/p/cisl/aiml/ai2es/winter_ptypes/models/classifier_weighted" 
+save_loc: "/glade/work/saavedrab/winter_ptypes" 
 asos_path: '/glade/p/cisl/aiml/ai2es/winter_ptypes/precip_rap/ASOS_mixture/'
 mping_path: '/glade/p/cisl/aiml/ai2es/winter_ptypes/precip_rap/mPING_mixture/'
 data_path: '/glade/p/cisl/aiml/ai2es/winter_ptypes/ptype_qc/mPING_interpolated_QC2.parquet'
