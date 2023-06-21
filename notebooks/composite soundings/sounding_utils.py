@@ -77,7 +77,7 @@ def open_ds_dkimpara(hour, model, concat_dim="time"):
 
 # set up the fig and ax
 def skewCompositeFigAx(figsize=(5, 5)):
-    fig = plt.figure(figsize=(5, 5))
+    fig = plt.figure(figsize)
     ax = fig.add_subplot((0, 0, 1, 1), projection="skewx", rotation=30)
     ax.grid(which="both")
 
