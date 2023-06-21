@@ -1,6 +1,7 @@
 name: ptype
 channels:
   - conda-forge
+  - r
 dependencies:
   - python=3.10
   - optuna
@@ -28,26 +29,14 @@ dependencies:
   - requests
   - metpy
   - herbie-data
-  - metpy
   - cfgrib
   - yaml
-  - numba
   - dask-jobqueue
-  - h5netcdf 
+  - h5netcdf
   - ca-certificates
   - certifi
   - openssl
   - wrf-python
   - xhistogram
   - black
-  - pip:
-    - pyarrow
-    - tensorflow
-    - tensorflow-probability
-    - hagelslag
-    - imblearn
-    - git+https://github.com/NCAR/bridgescaler
-    - git+https://github.com/NCAR/echo-opt
-    - git+https://github.com/ai2es/evidential.git
-    - bridgescaler
-    - .
+prefix: /glade/work/dkimpara/conda-envs/ptype
