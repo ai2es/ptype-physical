@@ -27,6 +27,7 @@ def main(config, username, date, forecast_hour):
     ds, df, surface_vars = load_data(var_dict=config["variables"]["model"][nwp_model],
                                      file=file,
                                      model=nwp_model,
+                                     extent=config["extent"],
                                      drop=config["drop_input_data"])
 
     data, interpolated_pl = convert_and_interpolate(data=df,

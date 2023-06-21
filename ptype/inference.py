@@ -40,6 +40,10 @@ def kelvin_to_celsius(temp):
     return temp - 273.15
 
 
+def convert_longitude(lon):
+    """ Convert longitude from -180-180 to 0-360"""
+    return lon % 360
+
 def download_data(date, model, product, save_dir, forecast_hour):
     """ Download data use Herbie for specified dates, model and forecast range.
     Args:
@@ -63,7 +67,7 @@ def download_data(date, model, product, save_dir, forecast_hour):
 
 
 
-def load_data(var_dict, file, model, drop):
+def load_data(var_dict, file, model, extent, drop):
     """
     Load variables from grib file, flatten pressure variables and convert to DataFrame. Supports "gfs", "rap", "hrrr"
     and "nam" models.
@@ -110,13 +114,13 @@ def load_data(var_dict, file, model, drop):
     else:
         nwp_dataset['dpt'].values = kelvin_to_celsius(nwp_dataset['dpt'].values)
     nwp_dataset['hgt_above_sfc'] = nwp_dataset['gh'] - nwp_dataset['orog']
+    nwp_dataset = add_coord_data(file, nwp_dataset, extent)
     flattened_df = df_flatten(nwp_dataset, ['t', 'dpt', 'u', 'v', 'hgt_above_sfc'])
 
     surface_vars = {x: nwp_dataset[x].values.flatten() for x in var_dict["heightAboveGround"] + var_dict["surface"]}
     surface_vars['t2m'] = kelvin_to_celsius(surface_vars['t2m'])
     surface_vars['d2m'] = kelvin_to_celsius(surface_vars['d2m'])
 
-    nwp_dataset = add_coord_data(file, nwp_dataset)
     os.remove(str(file))  # delete grib file
 
     if drop:
@@ -126,12 +130,38 @@ def load_data(var_dict, file, model, drop):
         return nwp_dataset, flattened_df, surface_vars
 
 
-def add_coord_data(file_path, grib_data):
+def subset_extent(nwp_data, extent, transformer=None):
+        """
+        Subset data by given extent in projection coordinates
+        Args:
+            nwp_data: Xr.dataset of NWP data
+            extent: List of coordinates for subsetting (lon_min, lon_max, lat_min, lat_max)
+            transformer: Pyproj Projection transformer object
+
+        Returns:
+            Subsetted Xr.Dataset
+        """
+        lon_min, lon_max, lat_min, lat_max = extent
+        if transformer is not None:
+            x_coords, y_coords = transformer.transform([lon_min, lon_max], [lat_min, lat_max])
+            subset = nwp_data.swap_dims({'y': 'y_projection_coordinate', 'x': 'x_projection_coordinate'}).sel(
+                y_projection_coordinate=slice(y_coords[0], y_coords[1]),
+                x_projection_coordinate=slice(x_coords[0], x_coords[1])).swap_dims(
+                    {'y_projection_coordinate': 'y', 'x_projection_coordinate': 'x'})
+        else:
+            subset = nwp_data.sel(longitude=slice(convert_longitude(lon_min), convert_longitude(lon_max)),
+                                  latitude=slice(lat_max, lat_min))  # GFS orders latitude in descending values :/
+            print(subset)
+        return subset
+
+
+def add_coord_data(file_path, grib_data, extent):
     """
     Add cf-style projection information and projection coordinates.
     Args:
         file_path (str): Path to grib2 file
         grib_data (xr.Dataset): Dataset to add coordinate information to
+        extent (list): List of coordinates to subset (lon_min, lon_max, lat_min, lat_max)
 
     Returns:
 
@@ -151,10 +181,18 @@ def add_coord_data(file_path, grib_data):
         grib_data["y_projection_coordinate"].attrs["Description"] = "Lambert Conformal Conic y-projection coordinates"
         grib_data["x_projection_coordinate"].attrs["Description"] = "Lambert Conformal Conic x-projection coordinates"
 
-        return grib_data.set_coords(["y_projection_coordinate", "x_projection_coordinate"])
+        grib_data = grib_data.set_coords(["y_projection_coordinate", "x_projection_coordinate"])
+        if extent != "full" and extent is not None:
+
+            return subset_extent(grib_data, extent, transformer)
+        else:
+            return grib_data
 
     else:
-        return grib_data
+        if extent != "full" and extent is not None:
+            return subset_extent(grib_data, extent, None)
+        else:
+            return grib_data
 
 
 def convert_and_interpolate(data, surface_data, pressure_levels, height_levels):

@@ -1,15 +1,14 @@
-model: "rap"
+model: "hrrr"
 ML_model_path: "/glade/p/cisl/aiml/ai2es/winter_ptypes/models/classifier_weighted_smallmodel"
-model_file: "model_11.h5"
-input_scaler_file: "input_11.json"
-output_scaler_file: "output_label_11.json"
-out_path: "/glade/scratch/username/ptype_case_studies/new_york_2/"
+input_scaler_file: "input.json"
+output_scaler_file: "output_label.json"
+out_path: "/glade/scratch/username/ptype_case_studies_vaisala/20221205/"
 drop_input_data: False
 add_interp_data: True
 n_processors: 1      # Only used if use_dask=False (dask has its own parameters at bottom of config)
 use_dask: True
 save_format: "netcdf"   # Supports "zarr" and "netcdf"
-
+extent: [-120, -110, 32, 35]  # [min_lon, max_lon, min_lat, max_lat] or "full"
 dates:
   start: "2022-02-03 00:00"
   end: "2022-02-04 23:00"
@@ -22,7 +21,7 @@ forecast_range:
 
 height_levels:
   low: 0
-  high: 16500
+  high: 5000
   interval: 250
 
 variables:
