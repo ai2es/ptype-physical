@@ -42,15 +42,16 @@ def filter_latlon(ds, bbox):
     return ds.where(mask, drop=True)
 
 
-def open_ds_dkimpara(hour, model, concat_dim="time"):
+def open_ds_dkimpara(hour, model, concat_dim="time", parallel=False):
     if "glade" in os.getcwd():
         ds = xr.open_mfdataset(
             (
-                f"""/glade/campaign/cisl/aiml/ptype/ptype_case_studies/"""
+                f"""/glade/scratch/dkimpara/ptype_case_studies/"""
                 f"""kentucky/{model}/20220223/{hour}/*.nc"""
             ),
             concat_dim=concat_dim,
             combine="nested",
+            parallel=parallel
         )
     else:  # running locally
         ds = xr.open_mfdataset(
@@ -62,8 +63,8 @@ def open_ds_dkimpara(hour, model, concat_dim="time"):
 
     # todo: filter latlon
 
-    if "wb_h" not in list(ds.keys()):
-        ds = wet_bulb_from_rel_humid(ds)
+    #if "wb_h" not in list(ds.keys()):
+    #    ds = wet_bulb_from_rel_humid(ds)
     return ds
 
 
