@@ -1,6 +1,7 @@
 import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
+from joblib import load
 
 from metpy.plots import SkewT
 from metpy.calc import (
@@ -31,15 +32,17 @@ def wet_bulb_from_rel_humid(ds):
     return ds
 
 
-def filter_latlon(ds, bbox):
-    lon_min, lon_max, lat_min, lat_max = bbox
+def filter_latlon(ds):
+    bbox = load('bbox_dict')
+    
     mask = (
-        (ds.latitude <= lat_max)
-        & (ds.latitude >= lat_min)
-        & (ds.longitude <= lon_max)
-        & (ds.longitude >= lon_min)
-    )
-    return ds.where(mask, drop=True)
+            (ds.latitude <= bbox['lat_max']) &
+            (ds.latitude >= bbox['lat_min']) &
+            (ds.longitude <= bbox['lon_max']) &
+            (ds.longitude >= bbox['lon_min'])
+           )
+    
+    return ds.where(mask.compute(), drop=True)
 
 
 def open_ds_dkimpara(hour, model, concat_dim="time", parallel=False):
