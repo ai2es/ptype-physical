@@ -18,7 +18,11 @@ from typing import List
 # temp r, dpt bl, wetbulb  c (cyan)
 
 COLOR_DICT = {"t_h": "r", "dpt_h": "b", "wb_h": "c"}
-
+BBOX = {'lon_min': 225.90453, 
+        'lon_max': 299.0828, 
+        'lat_min': 21.138123, 
+        'lat_max': 52.615654
+        }
 
 def wet_bulb_from_rel_humid(ds):
     enable_xarray()
@@ -33,15 +37,12 @@ def wet_bulb_from_rel_humid(ds):
 
 
 def filter_latlon(ds):
-    bbox = load('bbox_dict')
-    
     mask = (
-            (ds.latitude <= bbox['lat_max']) &
-            (ds.latitude >= bbox['lat_min']) &
-            (ds.longitude <= bbox['lon_max']) &
-            (ds.longitude >= bbox['lon_min'])
+            (ds.latitude <= BBOX['lat_max']) &
+            (ds.latitude >= BBOX['lat_min']) &
+            (ds.longitude <= BBOX['lon_max']) &
+            (ds.longitude >= BBOX['lon_min'])
            )
-    
     return ds.where(mask.compute(), drop=True)
 
 
