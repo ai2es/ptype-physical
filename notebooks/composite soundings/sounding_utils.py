@@ -104,7 +104,7 @@ def skewCompositeFigAx(figsize=(5, 5)):
 
 
 def frac_abv_zero(ds, x_col, total):
-    num_over_zero = (ds[x_col] > 0).any(dim="heightAboveGround").sum().values
+    num_over_zero = (ds[x_col] > 0).any(dim="heightAboveGround").sum()
     return num_over_zero / total
 
 
@@ -379,3 +379,22 @@ def composites_multi_x(
     ax.legend()
     plt.savefig(f"{cols}.png")
     return fig, ax
+
+def timer(tic):
+    toc = time.time()
+    duration = toc - tic
+    minutes = int(duration/60)
+    print(f"Elapsed time: {str(minutes) + ' minutes, ' if minutes else ''}{int(duration % 60)} seconds")
+
+
+def fn_timer(fn):
+    tic = time.time()
+    
+    out = fn()
+    
+    toc = time.time()    
+    duration = toc - tic
+    minutes = int(duration/60)
+    print(f"Elapsed time: {str(minutes) + ' minutes, ' if minutes else ''}{int(duration % 60)} seconds")
+    
+    return out
