@@ -2848,3 +2848,136 @@ Traceback (most recent call last):
   File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/tornado/websocket.py", line 439, in ping
     raise WebSocketClosedError()
 tornado.websocket.WebSocketClosedError
+2023-06-27 15:19:45,421 - tornado.application - ERROR - Exception in callback <bound method BokehTornado._keep_alive of <bokeh.server.tornado.BokehTornado object at 0x2b858731d450>>
+Traceback (most recent call last):
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/tornado/ioloop.py", line 919, in _run
+    val = self.callback()
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/bokeh/server/tornado.py", line 781, in _keep_alive
+    c.send_ping()
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/bokeh/server/connection.py", line 93, in send_ping
+    self._socket.ping(str(self._ping_count).encode("utf-8"))
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/tornado/websocket.py", line 439, in ping
+    raise WebSocketClosedError()
+tornado.websocket.WebSocketClosedError
+2023-06-27 15:22:25,525 - tornado.application - ERROR - Exception in callback <bound method BokehTornado._keep_alive of <bokeh.server.tornado.BokehTornado object at 0x2b858731d450>>
+Traceback (most recent call last):
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/tornado/ioloop.py", line 919, in _run
+    val = self.callback()
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/bokeh/server/tornado.py", line 781, in _keep_alive
+    c.send_ping()
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/bokeh/server/connection.py", line 93, in send_ping
+    self._socket.ping(str(self._ping_count).encode("utf-8"))
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/tornado/websocket.py", line 439, in ping
+    raise WebSocketClosedError()
+tornado.websocket.WebSocketClosedError
+2023-06-27 15:22:29,203 - tornado.application - ERROR - Exception in callback <bound method BokehTornado._keep_alive of <bokeh.server.tornado.BokehTornado object at 0x2b858731d450>>
+Traceback (most recent call last):
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/tornado/ioloop.py", line 919, in _run
+    val = self.callback()
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/bokeh/server/tornado.py", line 781, in _keep_alive
+    c.send_ping()
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/bokeh/server/connection.py", line 93, in send_ping
+    self._socket.ping(str(self._ping_count).encode("utf-8"))
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/tornado/websocket.py", line 439, in ping
+    raise WebSocketClosedError()
+tornado.websocket.WebSocketClosedError
+2023-06-27 15:22:29,811 - tornado.application - ERROR - Exception in callback <bound method BokehTornado._keep_alive of <bokeh.server.tornado.BokehTornado object at 0x2b858731d450>>
+Traceback (most recent call last):
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/tornado/ioloop.py", line 919, in _run
+    val = self.callback()
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/bokeh/server/tornado.py", line 781, in _keep_alive
+    c.send_ping()
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/bokeh/server/connection.py", line 93, in send_ping
+    self._socket.ping(str(self._ping_count).encode("utf-8"))
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/tornado/websocket.py", line 439, in ping
+    raise WebSocketClosedError()
+tornado.websocket.WebSocketClosedError
+2023-06-27 15:22:30,453 - tornado.application - ERROR - Exception in callback <bound method BokehTornado._keep_alive of <bokeh.server.tornado.BokehTornado object at 0x2b858731d450>>
+Traceback (most recent call last):
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/tornado/ioloop.py", line 919, in _run
+    val = self.callback()
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/bokeh/server/tornado.py", line 781, in _keep_alive
+    c.send_ping()
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/bokeh/server/connection.py", line 93, in send_ping
+    self._socket.ping(str(self._ping_count).encode("utf-8"))
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/tornado/websocket.py", line 439, in ping
+    raise WebSocketClosedError()
+tornado.websocket.WebSocketClosedError
+2023-06-27 15:22:34,018 - tornado.application - ERROR - Exception in callback <bound method BokehTornado._keep_alive of <bokeh.server.tornado.BokehTornado object at 0x2b858731d450>>
+Traceback (most recent call last):
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/tornado/ioloop.py", line 919, in _run
+    val = self.callback()
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/bokeh/server/tornado.py", line 781, in _keep_alive
+    c.send_ping()
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/bokeh/server/connection.py", line 93, in send_ping
+    self._socket.ping(str(self._ping_count).encode("utf-8"))
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/tornado/websocket.py", line 439, in ping
+    raise WebSocketClosedError()
+tornado.websocket.WebSocketClosedError
+2023-06-27 15:22:34,746 - tornado.application - ERROR - Exception in callback <bound method BokehTornado._keep_alive of <bokeh.server.tornado.BokehTornado object at 0x2b858731d450>>
+Traceback (most recent call last):
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/tornado/ioloop.py", line 919, in _run
+    val = self.callback()
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/bokeh/server/tornado.py", line 781, in _keep_alive
+    c.send_ping()
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/bokeh/server/connection.py", line 93, in send_ping
+    self._socket.ping(str(self._ping_count).encode("utf-8"))
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/tornado/websocket.py", line 439, in ping
+    raise WebSocketClosedError()
+tornado.websocket.WebSocketClosedError
+2023-06-27 15:22:35,462 - tornado.application - ERROR - Exception in callback <bound method BokehTornado._keep_alive of <bokeh.server.tornado.BokehTornado object at 0x2b858731d450>>
+Traceback (most recent call last):
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/tornado/ioloop.py", line 919, in _run
+    val = self.callback()
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/bokeh/server/tornado.py", line 781, in _keep_alive
+    c.send_ping()
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/bokeh/server/connection.py", line 93, in send_ping
+    self._socket.ping(str(self._ping_count).encode("utf-8"))
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/tornado/websocket.py", line 439, in ping
+    raise WebSocketClosedError()
+tornado.websocket.WebSocketClosedError
+2023-06-27 15:22:36,077 - tornado.application - ERROR - Exception in callback <bound method BokehTornado._keep_alive of <bokeh.server.tornado.BokehTornado object at 0x2b858731d450>>
+Traceback (most recent call last):
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/tornado/ioloop.py", line 919, in _run
+    val = self.callback()
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/bokeh/server/tornado.py", line 781, in _keep_alive
+    c.send_ping()
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/bokeh/server/connection.py", line 93, in send_ping
+    self._socket.ping(str(self._ping_count).encode("utf-8"))
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/tornado/websocket.py", line 439, in ping
+    raise WebSocketClosedError()
+tornado.websocket.WebSocketClosedError
+2023-06-27 15:22:36,813 - tornado.application - ERROR - Exception in callback <bound method BokehTornado._keep_alive of <bokeh.server.tornado.BokehTornado object at 0x2b858731d450>>
+Traceback (most recent call last):
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/tornado/ioloop.py", line 919, in _run
+    val = self.callback()
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/bokeh/server/tornado.py", line 781, in _keep_alive
+    c.send_ping()
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/bokeh/server/connection.py", line 93, in send_ping
+    self._socket.ping(str(self._ping_count).encode("utf-8"))
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/tornado/websocket.py", line 439, in ping
+    raise WebSocketClosedError()
+tornado.websocket.WebSocketClosedError
+2023-06-27 15:22:37,425 - tornado.application - ERROR - Exception in callback <bound method BokehTornado._keep_alive of <bokeh.server.tornado.BokehTornado object at 0x2b858731d450>>
+Traceback (most recent call last):
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/tornado/ioloop.py", line 919, in _run
+    val = self.callback()
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/bokeh/server/tornado.py", line 781, in _keep_alive
+    c.send_ping()
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/bokeh/server/connection.py", line 93, in send_ping
+    self._socket.ping(str(self._ping_count).encode("utf-8"))
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/tornado/websocket.py", line 439, in ping
+    raise WebSocketClosedError()
+tornado.websocket.WebSocketClosedError
+2023-06-27 15:22:38,141 - tornado.application - ERROR - Exception in callback <bound method BokehTornado._keep_alive of <bokeh.server.tornado.BokehTornado object at 0x2b858731d450>>
+Traceback (most recent call last):
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/tornado/ioloop.py", line 919, in _run
+    val = self.callback()
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/bokeh/server/tornado.py", line 781, in _keep_alive
+    c.send_ping()
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/bokeh/server/connection.py", line 93, in send_ping
+    self._socket.ping(str(self._ping_count).encode("utf-8"))
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/tornado/websocket.py", line 439, in ping
+    raise WebSocketClosedError()
+tornado.websocket.WebSocketClosedError
+Cgroup mem limit exceeded: 

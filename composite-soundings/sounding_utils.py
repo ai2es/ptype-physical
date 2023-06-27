@@ -123,6 +123,12 @@ def frac_abv_zero(ds, x_col, total):
     num_over_zero = (ds[x_col] > 0).any(dim="heightAboveGround").sum()
     return num_over_zero / total
 
+def frac_abv_split_time(ds, x_cols):
+    ds = ds[x_cols]
+    num_over_zero = (ds > 0).any(dim="heightAboveGround").sum(dim=('x','y'))
+    obs = ds.t_h.isel(heightAboveGround=0).count(dim=('x','y')).drop_vars('heightAboveGround')
+    return num_over_zero / obs
+
 
 def plot_masked(
     fig,
