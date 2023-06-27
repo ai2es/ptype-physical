@@ -28,19 +28,20 @@ def get_metadata(path):
                     }
     return metadata_dict
     
-def xr_map_reduce(base_path, func, n_jobs=-1): #works only on campg
+def xr_map_reduce(base_path, model, func, n_jobs=-1): #works only on campg
     dirpaths = []
     for (dirpath, dirnames, filenames) in os.walk(base_path):
         #if there are subdirs in the dir skip this loop
         if dirnames or not filenames: continue 
-    
-        dirpaths.append(dirpath)
+        if model in dirpath:
+            dirpaths.append(dirpath)
     if n_jobs == -1:
         num_cpus = (subprocess.run("qstat -f $PBS_JOBID | grep Resource_List.ncpus", 
                                   shell=True, capture_output=True, encoding='utf-8').stdout.split()[-1]
                     if 'glade' in os.getcwd() else
                     os.cpu_count()
         ) 
+        print(len(dirpaths), num_cpus)
         n_jobs = min(len(dirpaths), int(num_cpus))
         
     ########################## map and reduce ##############################
@@ -114,15 +115,32 @@ def compute_func(ds):
     result = xr.merge(ds_concat)
     
     return result
-        
+
+import argparse
+
 if __name__ == '__main__':
-    model = sys.argv[1]
-    filename = sys.argv[2]
+    parser = argparse.ArgumentParser(description='process a model initialization.')
+
+    parser.add_argument('-d', help='toplevel dir to run compute')
+    parser.add_argument('-o', help='outfile name')
+    parser.add_argument('-m', help='OR specify model to run all compute')
+    args = parser.parse_args()
+
+    if args.d:
+        dirpath = args.d
+    else:
+        dirpath = f"/glade/campaign/cisl/aiml/ptype/ptype_case_studies/"
+
+    print(f'opening {dirpath}')
     
+    if args.o:
+        print(f'saving to /glade/work/dkimpara/ptype-aggs/{args.o}.nc')
+    else:
+        raise ValueError('need to pass in outfile dir')
+
     tic = time.time()
     
-    res = xr_map_reduce(f"/glade/campaign/cisl/aiml/ptype/ptype_case_studies/*/{model}/*/*", 
-                        compute_func, -1)
-    res.to_netcdf(f'/glade/work/dkimpara/ptype-aggs/trial_{filename}.nc')
+    res = xr_map_reduce(dirpath, args.m, compute_func, -1)
+    res.to_netcdf(f'/glade/work/dkimpara/ptype-aggs/{args.o}.nc')
     
     sounding_utils.timer(tic)

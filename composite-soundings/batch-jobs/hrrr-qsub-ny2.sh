@@ -15,4 +15,4 @@ module load conda
 
 conda activate ptype
 cd /glade/u/home/dkimpara/ptype-physical/composite-soundings/batch-jobs
-python -u map-red-qsub.py -m gfs -o gfs0
+python -u map-red-qsub.py -m hrrr -o hrrr_ny2 -d /glade/campaign/cisl/aiml/ptype/ptype_case_studies/new_york_2
