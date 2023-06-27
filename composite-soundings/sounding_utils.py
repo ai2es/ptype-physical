@@ -14,6 +14,7 @@ from wrf import wetbulb, enable_xarray
 import os
 
 from typing import List
+import time
 
 # temp r, dpt bl, wetbulb  c (cyan)
 
@@ -23,6 +24,18 @@ BBOX = {'lon_min': 225.90453,
         'lat_min': 21.138123, 
         'lat_max': 52.615654
         }
+
+def wb_stull(ds):
+    rh_h = relative_humidity_from_dewpoint(ds.t_h * units.degC, ds.dpt_h * units.degC)
+    rh_h = rh_h.metpy.magnitude * 100 
+    T = ds.t_h
+    ds['wb_h'] = (T * np.arctan(0.151977 * np.sqrt(rh_h + 8.313659)) + 
+                  np.arctan(T + rh_h) -
+                  np.arctan(rh_h - 1.676331) + 
+                  0.00391838 * np.power(rh_h, 3/2) * np.arctan(0.023101 * rh_h) -
+                  4.686035
+                 )
+    return ds
 
 def wet_bulb_from_rel_humid(ds):
     enable_xarray()
@@ -46,13 +59,16 @@ def filter_latlon(ds):
     return ds.where(mask.compute(), drop=True)
 
 
-def open_ds_dkimpara(hour, model, concat_dim="time", parallel=False):
+def open_ds_dkimpara(hour, model, cluster='casper', concat_dim="time", parallel=False):
     if "glade" in os.getcwd():
-        ds = xr.open_mfdataset(
-            (
-                f"""/glade/scratch/dkimpara/ptype_case_studies/"""
-                f"""kentucky/{model}/20220223/{hour}/*.nc"""
-            ),
+        if cluster != 'casper':
+            filepath = (f"""/glade/scratch/dkimpara/ptype_case_studies/"""
+                        f"""kentucky/{model}/20220223/{hour}/*.nc""")
+        else:
+            filepath = (f"""/glade/campaign/cisl/aiml/ptype/ptype_case_studies/"""
+                        f"""kentucky/{model}/20220223/{hour}/*.nc""")
+            
+        ds = xr.open_mfdataset(filepath,
             concat_dim=concat_dim,
             combine="nested",
             parallel=parallel
@@ -82,7 +98,7 @@ def open_ds_dkimpara(hour, model, concat_dim="time", parallel=False):
 
 # set up the fig and ax
 def skewCompositeFigAx(figsize=(5, 5)):
-    fig = plt.figure(figsize)
+    fig = plt.figure(figsize=figsize)
     ax = fig.add_subplot((0, 0, 1, 1), projection="skewx", rotation=30)
     ax.grid(which="both")
 
