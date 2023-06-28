@@ -1,5 +1,8 @@
+# plotting utilities
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
+import seaborn as sns
+
 import numpy as np
 from sklearn.metrics import confusion_matrix
 from cartopy import crs as ccrs
@@ -98,11 +101,17 @@ def plot_scatter(
 
 
 def plot_confusion_matrix(
-    data, classes, font_size=10, normalize=False, axis=1, cmap=plt.cm.Blues, save_location=None
+    data, classes, font_size=10, normalize=None, axis=1, cmap=plt.cm.Blues, save_location=None
 ):
     """
-    Function to plot a confusion matrix.
+    Function to plot a confusion matrix using seaborn heatmap
+
+    data: dictonary, generally has test, validate, and training data
+    classes: different p-types to be tested, list
+    normalize: if you want the confusion matrix to be normalized or not. Needs to be None or 'true'
     """
+    if not type(data) is dict:
+        raise TypeError("Data neets to be a dictionary")
 
     fig, axs = plt.subplots(
         nrows=1, ncols=len(data), figsize=(10, 3.5), sharex="col", sharey="row"
@@ -110,38 +119,34 @@ def plot_confusion_matrix(
 
     for i, (key, ds) in enumerate(data.items()):
         ax = axs[i]
-        cm = confusion_matrix(ds["true_label"], ds["pred_label"])
-            
-        if normalize:
-            if axis == 1:
-                cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-            else:
-                cm = cm.astype('float') / cm.sum(axis=0)[np.newaxis, :]
+        cm = confusion_matrix(ds["true_label"], ds["pred_label"], normalize=normalize)
 
-        im = ax.imshow(cm, interpolation="nearest", cmap=cmap, vmin=0, vmax=1)
-        ax.figure.colorbar(im, ax=ax, shrink=0.80)
-        ax.set(xticks=np.arange(cm.shape[1]), yticks=np.arange(cm.shape[0]))
-        ax.set_xticklabels(classes, fontsize=font_size)
-        ax.set_yticklabels(classes, fontsize=font_size)
-        ax.set_title(key, fontsize=font_size)
+        if normalize == 'true':    
+            sns.heatmap(cm,
+                annot=True,
+                xticklabels=classes,
+                yticklabels=classes,
+                cmap=cmap,
+                vmin=0, 
+                vmax=1,
+                fmt='.2f',         
+                ax=ax)
+        elif normalize == None:
+            sns.heatmap(cm,
+                annot=True,
+                xticklabels=classes,
+                yticklabels=classes,
+                cmap=cmap,
+                fmt='.0f',         
+                ax=ax)
+
+        ax.set_title(key.title(), fontsize=font_size)
+        ax.tick_params(axis='y', rotation=0)
+        
         if i == 0:
             ax.set_ylabel("True label", fontsize=font_size)
         ax.set_xlabel("Predicted label", fontsize=font_size)
-
-        fmt = ".2f" if normalize else "d"
-        thresh = cm.max() / 2.0
-
-        for i in range(cm.shape[0]):
-            for j in range(cm.shape[1]):
-                ax.text(
-                    j,
-                    i,
-                    format(cm[i, j], fmt),
-                    ha="center",
-                    va="center",
-                    color="white" if cm[i, j] > thresh else "black",
-                    fontsize=font_size,
-                )
+    
     plt.tight_layout()
     if save_location:
         plt.savefig(save_location, dpi=300, bbox_inches="tight")
