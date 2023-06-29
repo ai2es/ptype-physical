@@ -26,10 +26,10 @@ if __name__ == '__main__':
     if args.o:
         print(f'saving to /glade/work/dkimpara/ptype-aggs/{args.o}.nc')
     else:
-        raise ValueError('need to pass in outfile dir')
+        raise ValueError('need to pass in outfile name')
 
     tic = time.time()
-    
+
     res = xmr.xr_map_reduce(dirpath, args.m, xmr.compute_func, -1)
     res.to_netcdf(f'/glade/work/dkimpara/ptype-aggs/{args.o}.nc')
     

@@ -1,0 +1,6 @@
+/var/spool/pbs/mom_priv/jobs/7800475.casper-pbs.SC: line 17: cd: /glade/u/home/dkimpara/ptype-physical/composite-soundings/batch-jobs: No such file or directory
+opening /glade/campaign/cisl/aiml/ptype/ptype_case_studies/kentucky
+
+saving to /glade/work/dkimpara/ptype-aggs/rap_kentucky.nc
+
+48 12

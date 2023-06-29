@@ -1,13 +1,14 @@
 import numpy as np
 import xarray as xr
+import pandas as pd
 
 import os
 from os.path import join
 import sys
-sys.path.append('../') # lets us import ptype package from the subdir
+sys.path.append('../') # lets us import sounding utils package
 #import ptype.
 
-import sounding_utils
+import soundings.utils as sounding_utils
 
 from joblib import Parallel, delayed
 from xhistogram.xarray import histogram
@@ -20,7 +21,17 @@ def get_metadata(path):
     metadata_dict = {'case_study_day': [f'{split_path[-4]}-{split_path[-2]}']}
     return metadata_dict
     
-def xr_map_reduce(base_path, model, func, n_jobs=-1): #works only on campaign
+def time_to_inithr(ds):
+    datetime = np.datetime64(int(ds['time'].values[0]), 's')
+    hour = pd.Timestamp(datetime).hour
+    ds = (
+          ds.rename({"time": "init_hr"})
+          .assign_coords({"init_hr":[hour]})
+         )
+    ds["valid_time"] = ds["valid_time"].expand_dims({"init_hr": ds.init_hr})
+    return ds
+
+def xr_map_reduce(base_path, model, func, n_jobs=-1): 
     dirpaths = []
     for (dirpath, dirnames, filenames) in os.walk(base_path):
         #if there are subdirs in the dir skip this loop
@@ -28,17 +39,22 @@ def xr_map_reduce(base_path, model, func, n_jobs=-1): #works only on campaign
         if model in dirpath:
             dirpaths.append(dirpath)
     if n_jobs == -1:
-        num_cpus = (subprocess.run("qstat -f $PBS_JOBID | grep Resource_List.ncpus", 
-                                  shell=True, capture_output=True, encoding='utf-8').stdout.split()[-1]
-                    if 'glade' in os.getcwd() else
-                    os.cpu_count()
-        ) 
+        if 'glade' in os.getcwd():
+            #jobid = str(os.environ['PBS_JOBID'])
+            num_cpus = subprocess.run(f"qstat -f $PBS_JOBID | grep Resource_List.ncpus", 
+                                        shell=True, 
+                                        capture_output=True, 
+                                        encoding='utf-8').stdout.split()[-1]
+        else:
+            num_cpus = os.cpu_count()
         print(len(dirpaths), num_cpus)
-        n_jobs = min(len(dirpaths), int(num_cpus))
+        n_jobs = min(len(dirpaths), int(num_cpus) - 4)
         
     ########################## map and reduce ##############################
-    results = Parallel(n_jobs=n_jobs)(delayed(xr_map)(path, func) for path in dirpaths)
-    return xr.concat(results, dim=('time')) #each result ds will be for a different time
+    results = Parallel(n_jobs=n_jobs, timeout=99999)(delayed(xr_map)(path, func) for path in dirpaths)
+    #results = [xr_map(path,func) for path in dirpaths]
+    results = Parallel(n_jobs=n_jobs, timeout=99999)(delayed(time_to_inithr)(res) for res in results)
+    return xr.merge(results) # datasets will all have some overlapping coords
         
 def xr_map(dirpath, func):
     ds = xr.open_mfdataset(join(dirpath, "*.nc"), 
@@ -46,8 +62,8 @@ def xr_map(dirpath, func):
                             combine='nested',
                             engine='netcdf4', 
                             decode_cf=False)
-    valid_time = ds.valid_time.expand_dims({'time': ds.time})
 
+    valid_time = ds['valid_time']
     ds = sounding_utils.filter_latlon(ds)
     ds = ds.where((
       (ds['crain'] == 1) | 
@@ -104,7 +120,7 @@ def compute_func(ds):
                         'hists': densities}
             results = {k: v.expand_dims({'predtype':[predtype]}) for k,v in results.items()}
             
-            for k,v in res_dict.items():
+            for k in res_dict.keys():
                 res_dict[k].append(results[k])
     
     ds_concat = [xr.concat(res_ds_list, dim='predtype') for res_ds_list in res_dict.values()]
