@@ -8,9 +8,12 @@ def mean_from_hist(hist): #need really small bins
     return (hist * hist.bin).sum(dim='bin')
 
 class SoundingQuery():
-    def __init__(self, datasets):
+    def __init__(self, datasets, concat_dim=''):
         datasets = self._to_sequence(datasets) 
-        self.ds = xr.merge(datasets)
+        if concat_dim:
+            self.ds = xr.concat(datasets, dim=concat_dim)
+        else:
+            self.ds = xr.merge(datasets)
             
     def query(self, predtypes, variables, stats, sel={}):
         # code to change single inputs to a list
