@@ -7,11 +7,11 @@
 ### gfs: 1h ncpus=6:mem=50GB
 ### would not run hrrr with this script
 
-#PBS -l walltime=01:00:00
+#PBS -l walltime=01:30:00
 #PBS -o ptype_gfs.out
 #PBS -e ptype_gfs.out
 #PBS -q casper
-#PBS -l select=1:ncpus=4:mem=50GB
+#PBS -l select=1:ncpus=6:mem=50GB
 #PBS -m a
 #PBS -M dkimpara@ucar.edu
 export TMPDIR=/glade/scratch/$USER/temp
@@ -20,7 +20,9 @@ source /etc/profile.d/modules.sh
 module load conda
 
 conda activate ptype
-cd /glade/u/home/dkimpara/ptype-physical/composite-soundings/batch-jobs
+cd /glade/u/home/dkimpara/ptype-physical/
+git checkout dkimpara
+cd composite-soundings/batch_jobs
 
 ### Run analysis script -i 0 for kentucky, 1 for new_york_1, 2 for new_york_2
-python -u mr-run-by-case.py -i 1 -m gfs -o gfs
+python -u mr-run.py -i 1 -m gfs -o gfs
