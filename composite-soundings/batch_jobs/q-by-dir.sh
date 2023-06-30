@@ -1,11 +1,17 @@
 #!/bin/bash -l
 #PBS -N ptype_hrrr
 #PBS -A NAML0001
+
+### would use this script for hrrr data
+### rec resources: ncpus=32+ mem=650GB+ (not totally sure)
+### only run on one case study day at a time (or less)
+
+
 #PBS -l walltime=02:00:00
 #PBS -o ptype_hrrr.out
 #PBS -e ptype_hrrr.out
 #PBS -q casper
-#PBS -l select=1:ncpus=32:mem=600GB
+#PBS -l select=1:ncpus=32:mem=650GB
 #PBS -m a
 #PBS -M dkimpara@ucar.edu
 export TMPDIR=/glade/scratch/$USER/temp

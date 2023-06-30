@@ -30,7 +30,7 @@ if __name__ == '__main__':
     if args.o:
         save_file = f'/glade/work/dkimpara/ptype-aggs/{args.o}_{case_study}.nc'
         print(f'saving to {save_file}\n')
-        intermediate_save_file = f'/glade/work/dkimpara/ptype-aggs/{args.o}_{case_study}_inter.dump'
+        intermediate_save_file = f'/glade/work/dkimpara/ptype-aggs/{args.o}_{case_study}_pre_merge.dump'
     else:
         raise ValueError('need to pass in outfile name')
 

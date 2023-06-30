@@ -27,11 +27,15 @@ if __name__ == '__main__':
 
     dirpath = args.d
     print(f"opening {dirpath}")
-    print(f'saving to /glade/work/dkimpara/ptype-aggs/{args.o}.nc')
+
+    save_file = f'/glade/work/dkimpara/ptype-aggs/{args.o}.nc'
+    print(f'saving to {save_file}\n')
+    intermediate_save_file = f'/glade/work/dkimpara/ptype-aggs/{args.o}_pre_merge.dump'
 
     tic = time.time()
 
-    res = xmr.xr_map_reduce(dirpath, args.m, xmr.compute_func, -1)
-    res.to_netcdf(f'/glade/work/dkimpara/ptype-aggs/{args.o}.nc')
+    res = xmr.xr_map_reduce(dirpath, args.m, xmr.compute_func,
+                            intermediate_save_file, -1)
+    res.to_netcdf(save_file)
     
-    utils.timer(tic)
+    utils.timer(tic, args.o)
