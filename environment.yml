@@ -8,6 +8,7 @@ dependencies:
   - numpy
   - scipy
   - matplotlib
+  - seaborn
   - xarray
   - netcdf4
   - dask
