@@ -32,3 +32,5 @@ saving to /glade/work/dkimpara/ptype-aggs/gfs_new_york_1.nc
   return func(*(_execute_task(a, cache) for a in args))
 /glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
   return func(*(_execute_task(a, cache) for a in args))
+dumped, now merging
+new_york_1. Elapsed time: 3 minutes, 0 seconds
