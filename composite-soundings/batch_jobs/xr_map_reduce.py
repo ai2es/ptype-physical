@@ -38,9 +38,8 @@ def xr_map_reduce(base_path, model, func, intermediate_file, n_jobs=-1):
         if dirnames or not filenames: continue 
         if model in dirpath:
             dirpaths.append(dirpath)
-    if n_jobs == -1:
+    if n_jobs == -1: #setting n_jobs
         if 'glade' in os.getcwd():
-            #jobid = str(os.environ['PBS_JOBID'])
             num_cpus = subprocess.run(f"qstat -f $PBS_JOBID | grep Resource_List.ncpus", 
                                         shell=True, 
                                         capture_output=True, 
@@ -52,13 +51,12 @@ def xr_map_reduce(base_path, model, func, intermediate_file, n_jobs=-1):
         
     ########################## map and reduce ##############################
     results = Parallel(n_jobs=n_jobs, timeout=99999)(delayed(xr_map)(path, func) for path in dirpaths)
-    #results = [xr_map(path,func) for path in dirpaths]
     results = Parallel(n_jobs=n_jobs, timeout=99999)(delayed(time_to_inithr)(res) for res in results)
     dump(results, intermediate_file)
     print('dumped, now merging')
-    return xr.merge(results) # datasets will all have some overlapping coords
+    return xr.merge(results) # datasets will all have some overlapping coords so need to merge
         
-def xr_map(dirpath, func):
+def xr_map(dirpath, func): #function to call with Parallel
     ds = xr.open_mfdataset(join(dirpath, "*.nc"), 
                             concat_dim='step', 
                             combine='nested',

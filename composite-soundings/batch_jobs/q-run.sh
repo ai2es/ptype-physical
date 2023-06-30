@@ -25,7 +25,6 @@ cd /glade/u/home/dkimpara/ptype-physical/
 git checkout dkimpara
 cd composite-soundings/batch_jobs
 
-
 ### use following for hrrr:
 python -u mr-run.py -m hrrr -o hrrr_k_0 -d /glade/campaign/cisl/aiml/ptype/ptype_case_studies/kentucky/hrrr/20220223
 
