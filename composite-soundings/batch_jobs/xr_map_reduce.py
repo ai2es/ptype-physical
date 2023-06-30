@@ -10,7 +10,7 @@ sys.path.append('../') # lets us import sounding utils package
 
 import soundings.utils as sounding_utils
 
-from joblib import Parallel, delayed
+from joblib import Parallel, delayed, dump
 from xhistogram.xarray import histogram
 
 import subprocess
@@ -29,9 +29,9 @@ def time_to_inithr(ds):
           .assign_coords({"init_hr":[hour]})
          )
     ds["valid_time"] = ds["valid_time"].expand_dims({"init_hr": ds.init_hr})
-    return ds
+    return ds.compute()
 
-def xr_map_reduce(base_path, model, func, n_jobs=-1): 
+def xr_map_reduce(base_path, model, func, intermediate_file, n_jobs=-1): 
     dirpaths = []
     for (dirpath, dirnames, filenames) in os.walk(base_path):
         #if there are subdirs in the dir skip this loop
@@ -54,6 +54,8 @@ def xr_map_reduce(base_path, model, func, n_jobs=-1):
     results = Parallel(n_jobs=n_jobs, timeout=99999)(delayed(xr_map)(path, func) for path in dirpaths)
     #results = [xr_map(path,func) for path in dirpaths]
     results = Parallel(n_jobs=n_jobs, timeout=99999)(delayed(time_to_inithr)(res) for res in results)
+    dump(results, intermediate_file)
+    print('dumped, now merging')
     return xr.merge(results) # datasets will all have some overlapping coords
         
 def xr_map(dirpath, func):
@@ -82,7 +84,7 @@ def xr_map(dirpath, func):
     res = func(ds)
     res['valid_time'] = valid_time.expand_dims(metadata_dict)
 
-    return res
+    return res.compute() #dont care about keeping original ds
 
 def compute_func(ds):
     proftypes = ['t_h','dpt_h','wb_h']

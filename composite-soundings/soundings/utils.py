@@ -118,12 +118,13 @@ def frac_abv_zero(ds, x_col, total):
     return num_over_zero / total
 
 def frac_abv_split_time(ds, x_cols):
+    np.seterr(divide='ignore', invalid='ignore')
     ds = ds[x_cols]
     num_over_zero = (ds > 0).any(dim="heightAboveGround").sum(dim=('x','y'))
     obs = ds[x_cols[0]].isel(heightAboveGround=0).count(dim=('x','y')).drop_vars('heightAboveGround')
     
-    if ((obs == 0).sum().values > 0) or (obs.isnull().sum().values > 0):
-        print(f'Warning: obs has a 0 val ({ds["time"]}, {ds.case_study_day})')
+    #if ((obs == 0).sum().values > 0) or (obs.isnull().sum().values > 0):
+    #    print(f'Warning: obs has a 0 val ({ds["time"]}, {ds.case_study_day})')
     
     return num_over_zero / obs
 
