@@ -48,7 +48,7 @@ def xr_map_reduce(base_path, model, func, intermediate_file, n_jobs=-1):
         else:
             num_cpus = os.cpu_count()
         print(len(dirpaths), num_cpus)
-        n_jobs = min(len(dirpaths), int(num_cpus) - 4)
+        n_jobs = min(len(dirpaths), max(int(num_cpus) - 4, 2))
         
     ########################## map and reduce ##############################
     results = Parallel(n_jobs=n_jobs, timeout=99999)(delayed(xr_map)(path, func) for path in dirpaths)

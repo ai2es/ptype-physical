@@ -1,1 +1,21 @@
 /var/spool/pbs/mom_priv/jobs/7814652.casper-pbs.SC: line 23: cd: /glade/u/home/dkimpara/ptype-physical/composite-soundings/batch-jobs: No such file or directory
+opening /glade/campaign/cisl/aiml/ptype/ptype_case_studies/new_york_1
+
+saving to /glade/work/dkimpara/ptype-aggs/gfs_new_york_1.nc
+
+12 4
+Traceback (most recent call last):
+  File "/glade/u/home/dkimpara/ptype-physical/composite-soundings/batch_jobs/mr-run-by-case.py", line 39, in <module>
+    res = xmr.xr_map_reduce(dirpath, args.m, xmr.compute_func,
+  File "/glade/u/home/dkimpara/ptype-physical/composite-soundings/batch_jobs/xr_map_reduce.py", line 54, in xr_map_reduce
+    results = Parallel(n_jobs=n_jobs, timeout=99999)(delayed(xr_map)(path, func) for path in dirpaths)
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/joblib/parallel.py", line 1008, in __call__
+    n_jobs = self._initialize_backend()
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/joblib/parallel.py", line 775, in _initialize_backend
+    n_jobs = self._backend.configure(n_jobs=self.n_jobs, parallel=self,
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/joblib/_parallel_backends.py", line 501, in configure
+    n_jobs = self.effective_n_jobs(n_jobs)
+  File "/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/joblib/_parallel_backends.py", line 516, in effective_n_jobs
+    raise ValueError('n_jobs == 0 in Parallel has no meaning')
+ValueError: n_jobs == 0 in Parallel has no meaning
+/var/spool/pbs/mom_priv/jobs/7814748.casper-pbs.SC: line 23: cd: /glade/u/home/dkimpara/ptype-physical/composite-soundings/batch-jobs: No such file or directory
