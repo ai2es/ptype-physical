@@ -9,3 +9,164 @@ saving to /glade/work/dkimpara/ptype-aggs/rap_kentucky.nc
 /glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/joblib/externals/loky/process_executor.py:700: UserWarning: A worker stopped while some jobs were given to the executor. This can be caused by a too short worker timeout or by a memory leak.
   warnings.warn(
 dumped, now merging
+kentucky. Elapsed time: 18 minutes, 11 seconds
+Cgroup mem limit exceeded: 
+/var/spool/pbs/mom_priv/jobs/7813558.casper-pbs.SC: line 17: cd: /glade/u/home/dkimpara/ptype-physical/composite-soundings/batch-jobs: No such file or directory
+opening /glade/campaign/cisl/aiml/ptype/ptype_case_studies/new_york_1
+
+saving to /glade/work/dkimpara/ptype-aggs/rap_new_york_1.nc
+
+72 24
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/joblib/externals/loky/process_executor.py:700: UserWarning: A worker stopped while some jobs were given to the executor. This can be caused by a too short worker timeout or by a memory leak.
+  warnings.warn(
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/joblib/externals/loky/process_executor.py:700: UserWarning: A worker stopped while some jobs were given to the executor. This can be caused by a too short worker timeout or by a memory leak.
+  warnings.warn(
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/joblib/externals/loky/process_executor.py:700: UserWarning: A worker stopped while some jobs were given to the executor. This can be caused by a too short worker timeout or by a memory leak.
+  warnings.warn(
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+dumped, now merging
+new_york_1. Elapsed time: 58 minutes, 49 seconds
+Cgroup mem limit exceeded: 
+/var/spool/pbs/mom_priv/jobs/7814465.casper-pbs.SC: line 17: cd: /glade/u/home/dkimpara/ptype-physical/composite-soundings/batch-jobs: No such file or directory
+opening /glade/campaign/cisl/aiml/ptype/ptype_case_studies/new_york_2
+
+saving to /glade/work/dkimpara/ptype-aggs/rap_new_york_2.nc
+
+48 24
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/joblib/externals/loky/process_executor.py:700: UserWarning: A worker stopped while some jobs were given to the executor. This can be caused by a too short worker timeout or by a memory leak.
+  warnings.warn(
+dumped, now merging
+new_york_2. Elapsed time: 15 minutes, 8 seconds

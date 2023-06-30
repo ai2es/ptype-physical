@@ -1,4 +1,3 @@
-import argparse
 import sys
 sys.path.append('../') # lets us import sounding_utils
 import time

@@ -1,0 +1,39 @@
+/var/spool/pbs/mom_priv/jobs/7814550.casper-pbs.SC: line 17: cd: /glade/u/home/dkimpara/ptype-physical/composite-soundings/batch-jobs: No such file or directory
+opening /glade/campaign/cisl/aiml/ptype/ptype_case_studies/kentucky
+
+saving to /glade/work/dkimpara/ptype-aggs/gfs_kentucky.nc
+
+8 24
+dumped, now merging
+kentucky. Elapsed time: 2 minutes, 49 seconds
+/var/spool/pbs/mom_priv/jobs/7814567.casper-pbs.SC: line 17: cd: /glade/u/home/dkimpara/ptype-physical/composite-soundings/batch-jobs: No such file or directory
+opening /glade/campaign/cisl/aiml/ptype/ptype_case_studies/new_york_1
+
+saving to /glade/work/dkimpara/ptype-aggs/gfs_new_york_1.nc
+
+12 12
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+dumped, now merging
+new_york_1. Elapsed time: 5 minutes, 41 seconds
+/var/spool/pbs/mom_priv/jobs/7814604.casper-pbs.SC: line 17: cd: /glade/u/home/dkimpara/ptype-physical/composite-soundings/batch-jobs: No such file or directory

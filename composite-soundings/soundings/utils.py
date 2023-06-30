@@ -1,7 +1,6 @@
 import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
-from joblib import load
 
 from metpy.plots import SkewT
 from metpy.calc import (
@@ -58,7 +57,7 @@ def filter_latlon(ds):
     return ds.where(mask.compute(), drop=True)
 
 
-def open_ds_dkimpara(hour, model, cluster='casper', concat_dim="time", parallel=False):
+def open_ds_dkimpara(hour, model, cluster='casper', concat_dim="valid_time", parallel=False):
     if "glade" in os.getcwd():
         if cluster != 'casper':
             filepath = (f"""/glade/scratch/dkimpara/ptype_case_studies/"""
@@ -132,7 +131,13 @@ def count_nulls(ds):
     nulls = ds.isnull().sum()
 
     for var in list(nulls.keys()):
-        print(nulls[var].values)
+        print(f'{var}: {nulls[var].values}')
+        
+def count_notnulls(ds):
+    notnulls = ds.notnull().sum()
+
+    for var in list(nulls.keys()):
+        print(f'{var}: {notnulls[var].values}')
 
 def timer(tic, message=''):
     toc = time.time()
