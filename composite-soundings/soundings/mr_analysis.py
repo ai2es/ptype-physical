@@ -17,6 +17,12 @@ class SoundingQuery:
         else:
             self.ds = xr.merge(datasets)
 
+    def num_obs(self, predtypes, sel={}):
+        predtypes = self._to_sequence(predtypes)
+        sel = self._sel_to_list(sel) #converts singleton values to list to keep dims after sel
+        ds = self.ds.sel(sel | {'predtype':predtypes})
+        return ds['num_obs'].sum(dim=("case_study_day", "step", "init_hr"))
+
     def query(self, predtypes, variables, stats, sel={}):
         # code to change single inputs to a list
         predtypes = self._to_sequence(predtypes)
@@ -62,7 +68,6 @@ class SoundingQuery:
         for k,v in sel.items():
             sel[k] = self._to_sequence(v)
         return sel
-
 
     def _compute_cdf(self, hist):
         csum = hist.cumsum(dim="bin")
