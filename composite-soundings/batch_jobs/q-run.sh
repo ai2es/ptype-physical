@@ -5,7 +5,7 @@
 ### resource recs:
 ### rap: 1h ncpus=24:mem=250GB
 ### gfs: 1h ncpus=6:mem=50GB
-### hrrr: ncpus=32+ mem=650GB+ (not totally sure)
+### hrrr: 30min ncpus=32 mem=550GB
 ### for hrrr - only run on one case study *day* at a time (or less)
 
 #PBS -l walltime=00:45:00

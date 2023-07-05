@@ -31,25 +31,32 @@ def time_to_inithr(ds):
     ds["valid_time"] = ds["valid_time"].expand_dims({"init_hr": ds.init_hr})
     return ds.compute()
 
+def get_num_cpus():
+    if "glade" in os.getcwd():
+        num_cpus = subprocess.run(
+            f"qstat -f $PBS_JOBID | grep Resource_List.ncpus",
+            shell=True,
+            capture_output=True,
+            encoding="utf-8",
+        ).stdout.split()[-1]
+    else:
+        num_cpus = os.cpu_count()
+    return num_cpus
 
-def xr_map_reduce(base_path, model, func, intermediate_file, n_jobs=-1):
-    dirpaths = []
+def get_dirpaths(model, base_path):
+    lower_dir_path = []
     for dirpath, dirnames, filenames in os.walk(base_path):
         # if there are subdirs in the dir skip this loop
         if dirnames or not filenames:
             continue
         if model in dirpath:
-            dirpaths.append(dirpath)
+            lower_dir_path.append(dirpath)
+    return lower_dir_path
+
+def xr_map_reduce(base_path, model, func, intermediate_file, n_jobs=-1):
+    dirpaths = get_dirpaths(model, base_path)
     if n_jobs == -1:  # setting n_jobs
-        if "glade" in os.getcwd():
-            num_cpus = subprocess.run(
-                f"qstat -f $PBS_JOBID | grep Resource_List.ncpus",
-                shell=True,
-                capture_output=True,
-                encoding="utf-8",
-            ).stdout.split()[-1]
-        else:
-            num_cpus = os.cpu_count()
+        num_cpus = get_num_cpus()
         print(len(dirpaths), num_cpus)
         n_jobs = min(len(dirpaths), max(int(num_cpus) - 4, 4))
 
@@ -57,14 +64,16 @@ def xr_map_reduce(base_path, model, func, intermediate_file, n_jobs=-1):
     results = Parallel(n_jobs=n_jobs, timeout=99999)(
         delayed(xr_map)(path, func) for path in dirpaths
     )
+    
+    #convert time to init_hr
     results = Parallel(n_jobs=n_jobs, timeout=99999)(
         delayed(time_to_inithr)(res) for res in results
     )
-    dump(results, intermediate_file)
-    print("dumped, now merging")
-    return xr.merge(
-        results
-    )  # datasets will all have some overlapping coords so need to merge
+    
+    # optional: dump the intermediate file incase merging is taking a really long time
+    #dump(results, intermediate_file)
+    #print("dumped, now merging")
+    return xr.merge(results)  # datasets will all have some overlapping coords so need to merge
 
 
 def xr_map(dirpath, func):  # function to call with Parallel
