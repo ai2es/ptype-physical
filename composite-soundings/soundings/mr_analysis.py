@@ -22,15 +22,17 @@ class SoundingQuery:
         predtypes = self._to_sequence(predtypes)
         variables = self._to_sequence(variables)
         stats = self._to_sequence(stats)
-
+        sel = self._sel_to_list(sel) #converts singleton values to list to keep dims after sel
+        
         ds = self.ds.sel(sel)
-        query_vars = [f"{var}_{stat}" for var in variables for stat in stats]
         ds = ds.sel({"predtype": predtypes})
-
-        total_obs = ds["num_obs"].sum(dim=("case_study_day", "step", "init_hr"))
+        query_vars = [f"{var}_{stat}" for var in variables for stat in stats]
+ 
+        dims_to_reduce = ("case_study_day", "step", "init_hr")
+        total_obs = ds["num_obs"].sum(dim=dims_to_reduce)
         res = ds[query_vars] * ds["num_obs"]
 
-        return res.sum(dim=("case_study_day", "step", "init_hr")) / total_obs
+        return res.sum(dim=dims_to_reduce) / total_obs
 
     def quantile(self, quantiles, predtypes, variables, sel={}):
         # code to change single inputs to a list
@@ -55,6 +57,12 @@ class SoundingQuery:
                       )
                 results.append(qs)
         return xr.merge(results)
+
+    def _sel_to_list(self, sel):
+        for k,v in sel.items():
+            sel[k] = self._to_sequence(v)
+        return sel
+
 
     def _compute_cdf(self, hist):
         csum = hist.cumsum(dim="bin")
