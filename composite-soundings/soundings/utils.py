@@ -99,9 +99,9 @@ def open_ds_dkimpara(
 
 # set up the fig and ax
 def skewCompositeFigAx(figsize=(5, 5), num_subplots=1):
-    if num_subplots > 1:
+    if (num_subplots > 1) and (figsize == (5,5)):
         figsize = (10,5)
-    fig, axs = plt.subplots(1, num_subplots, sharex=True, sharey=True,
+    fig, axs = plt.subplots(1, num_subplots, sharey=True,
                             subplot_kw=dict(projection="skewx", rotation=30),
                             figsize=figsize)
     if num_subplots==1:
