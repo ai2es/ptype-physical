@@ -44,3 +44,5 @@ if __name__ == "__main__":
         dirpath, args.m, xmr.compute_func, intermediate_save_file, -1
     )
     res.to_netcdf(save_file)
+
+    print(f"write to {save_file} successful")

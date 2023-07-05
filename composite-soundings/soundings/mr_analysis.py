@@ -24,7 +24,7 @@ class SoundingQuery:
         stats = self._to_sequence(stats)
 
         ds = self.ds.sel(sel)
-        query_vars = [f"{var}_{stat}" for var, stat in zip(variables, stats)]
+        query_vars = [f"{var}_{stat}" for var in variables for stat in stats]
         ds = ds.sel({"predtype": predtypes})
 
         total_obs = ds["num_obs"].sum(dim=("case_study_day", "step", "init_hr"))
@@ -47,9 +47,12 @@ class SoundingQuery:
         for var in list(hist.keys()):
             cdf = self._compute_cdf(hist[var])
             for q in quantiles:
-                q_csum = cdf.where(cdf >= q * norm_const[var])
-                qs = q_csum.idxmin(dim="bin")
-                qs = qs.expand_dims({"quantile": [q]})
+                q_csum = cdf.where(cdf >= (q * norm_const[var]))
+                qs = (q_csum
+                      .idxmin(dim="bin")
+                      .expand_dims({"quantile": [q]})
+                      .rename(f'{var[:-5]}_q')
+                      )
                 results.append(qs)
         return xr.merge(results)
 
@@ -64,6 +67,6 @@ class SoundingQuery:
             return [obj]
 
     def _seq_but_not_str(self, obj):
-        return isinstance(obj, Sequence) and not isinstance(
+        return isinstance(obj, (Sequence, np.ndarray)) and not isinstance(
             obj, (str, bytes, bytearray)
         )

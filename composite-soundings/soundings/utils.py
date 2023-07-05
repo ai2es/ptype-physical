@@ -98,26 +98,31 @@ def open_ds_dkimpara(
 
 
 # set up the fig and ax
-def skewCompositeFigAx(figsize=(5, 5)):
-    fig = plt.figure(figsize=figsize)
-    ax = fig.add_subplot((0, 0, 1, 1), projection="skewx", rotation=30)
-    ax.grid(which="both")
+def skewCompositeFigAx(figsize=(5, 5), num_subplots=1):
+    if num_subplots > 1:
+        figsize = (10,5)
+    fig, axs = plt.subplots(1, num_subplots, sharex=True, sharey=True,
+                            subplot_kw=dict(projection="skewx", rotation=30),
+                            figsize=figsize)
+    if num_subplots==1:
+        axs = [axs]
+    axs[0].set_ylabel("Height above ground (m)", fontsize=10)
+    for ax in axs:
+        ax.grid(which="both")
 
-    major_ticks = np.arange(-100, 100, 5)
-    ax.set_xticks(major_ticks)
-    ax.grid(which="major", alpha=0.5)
+        major_ticks = np.arange(-100, 100, 5)
+        ax.set_xticks(major_ticks)
+        ax.grid(which="major", alpha=0.5)
 
-    # minor_ticks = np.arange(xlowlim - 60, xhighlim, 1)
-    # ax.set_xticks(minor_ticks, minor=True)
-    # ax.grid(which='minor', alpha=0.2)
+        # minor_ticks = np.arange(xlowlim - 60, xhighlim, 1)
+        # ax.set_xticks(minor_ticks, minor=True)
+        # ax.grid(which='minor', alpha=0.2)
 
-    ax.axvline(x=0, ymin=0, ymax=1, c="0")
+        ax.axvline(x=0, ymin=0, ymax=1, c="0")
+        ax.set_ylim(-100, 5100)
+        ax.set_xlim(-15, 30)
 
-    ax.set_ylabel("Height above ground (m)")
-    ax.set_ylim(-100, 5100)
-    ax.set_xlim(-20, 20)
-
-    return fig, ax
+    return fig, axs
 
 
 def frac_abv_zero(ds, x_col, total):
