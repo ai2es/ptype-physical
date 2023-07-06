@@ -30,7 +30,14 @@ class SoundingQuery:
         stats = self._to_sequence(stats)
         sel = self._sel_to_list(sel) #converts singleton values to list to keep dims after sel
         
-        ds = self.ds.sel(sel)
+        if 'valid_time' in sel.keys():
+            valid_time = sel['valid_time']
+            del sel['valid_time']
+            ds = self.ds.sel(sel)
+            ds = ds.where(ds.valid_time == valid_time)
+        else:
+            ds = self.ds.sel(sel)
+        
         ds = ds.sel({"predtype": predtypes})
         query_vars = [f"{var}_{stat}" for var in variables for stat in stats]
  
