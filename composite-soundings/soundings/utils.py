@@ -3,7 +3,7 @@ import xarray as xr
 import matplotlib.pyplot as plt
 
 from metpy.plots import SkewT
-from metpy.calc import relative_humidity_from_dewpoint,
+from metpy.calc import relative_humidity_from_dewpoint
 from metpy.units import units
 
 import os
@@ -11,18 +11,31 @@ import time
 
 COLOR_DICT = {"t_h": "r", "dpt_h": "b", "wb_h": "c"}
 
-def skewCompositeFigAx(figsize=(5, 5), num_subplots=1):
+def skewCompositeFigAx(figsize=(5, 5), num_subplots=1, rows=1, cols=None):
     #fig ax setup for skewx fig
-
+    #returns top subfigure and a list of axs lists
+    
     if (num_subplots > 1) and (figsize == (5,5)):
         figsize = (10,5)
-    fig, axs = plt.subplots(1, num_subplots, sharey=True,
-                            subplot_kw=dict(projection="skewx", rotation=30),
-                            figsize=figsize)
+    if cols: #add blank subplots below
+        num_subplots = cols
+    
+    fig = plt.figure(figsize=figsize)
+    sfigs = fig.subfigures(rows,1)
+    if rows==1:
+        sfigs = [sfigs]
+    
+    skew_axs = sfigs[0].subplots(1, num_subplots, sharey=True,
+                            subplot_kw=dict(projection="skewx", rotation=30))
+    axs = skew_axs
     if num_subplots==1:
         axs = [axs]
-    axs[0].set_ylabel("Height above ground (m)", fontsize=10)
-    for ax in axs:
+    if rows > 1:
+        t_axs = sfigs[1].subplots(1, num_subplots, sharex=True)
+        axs = [skew_axs, t_axs]
+    
+    skew_axs[0].set_ylabel("Height above ground (m)", fontsize=10)
+    for ax in skew_axs:
         ax.grid(which="both")
 
         major_ticks = np.arange(-100, 100, 5)
@@ -36,8 +49,8 @@ def skewCompositeFigAx(figsize=(5, 5), num_subplots=1):
         ax.axvline(x=0, ymin=0, ymax=1, c="0")
         ax.set_ylim(-100, 5100)
         ax.set_xlim(-15, 30)
-
-    return fig, axs
+    
+    return sfigs[0], axs
 
 ########### data processing ###############
 

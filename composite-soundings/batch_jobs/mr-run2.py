@@ -40,7 +40,7 @@ if __name__ == "__main__":
     print(f"saving to {save_file}\n")
 
     ############## compute #####################
-    res = xmr.xr_map_reduce(dirpath, args.m, xmr.compute_func, n_jobs=-1, intermediate_file='') #running without intermediate save
+    res = xmr.xr_map_reduce(dirpath, args.m, xmr.compute_prob_and_disagree, n_jobs=-1, intermediate_file='') #running without intermediate save
     res.to_netcdf(save_file)
 
     print(f"write to {save_file} successful")

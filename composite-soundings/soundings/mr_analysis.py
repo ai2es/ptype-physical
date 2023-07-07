@@ -10,6 +10,10 @@ def mean_from_hist(hist):  # need really small bins
 
 
 class SoundingQuery:
+    '''
+    class to ease querying for data from MR hist and mean results
+    '''
+
     def __init__(self, datasets, concat_dim=""):
         datasets = self._to_sequence(datasets)
         if concat_dim:
@@ -20,7 +24,14 @@ class SoundingQuery:
     def num_obs(self, predtypes, sel={}):
         predtypes = self._to_sequence(predtypes)
         sel = self._sel_to_list(sel) #converts singleton values to list to keep dims after sel
-        ds = self.ds.sel(sel | {'predtype':predtypes})
+        
+        if 'valid_time' in sel.keys():
+            valid_time = sel['valid_time']
+            del sel['valid_time']
+            ds = self.ds.sel(sel | {'predtype':predtypes})
+            ds = ds.where(ds.valid_time == valid_time)
+        else:
+            ds = self.ds.sel(sel | {'predtype':predtypes})
         return ds['num_obs'].sum(dim=("case_study_day", "step", "init_hr"))
 
     def query(self, predtypes, variables, stats, sel={}):
