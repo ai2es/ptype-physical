@@ -21,7 +21,7 @@ class SoundingQuery:
         else:
             self.ds = xr.merge(datasets)
 
-    def num_obs(self, predtypes, sel={}):
+    def num_obs(self, predtypes, sel={}, vartype=''):
         predtypes = self._to_sequence(predtypes)
         sel = self._sel_to_list(sel) #converts singleton values to list to keep dims after sel
         
@@ -32,7 +32,10 @@ class SoundingQuery:
             ds = ds.where(ds.valid_time == valid_time)
         else:
             ds = self.ds.sel(sel | {'predtype':predtypes})
-        return ds['num_obs'].sum(dim=("case_study_day", "step", "init_hr"))
+        
+        if vartype:
+            return ds[f'''num_obs_{vartype}'''].sum(dim=("case_study_day", "step", "init_hr"))
+        return ds[f'''num_obs'''].sum(dim=("case_study_day", "step", "init_hr"))
 
     def query(self, predtypes, variables, stats, sel={}):
         # code to change single inputs to a list
@@ -58,14 +61,17 @@ class SoundingQuery:
 
         return res.sum(dim=dims_to_reduce) / total_obs
 
-    def quantile(self, quantiles, predtypes, variables, sel={}):
+    def quantile(self, quantiles, predtypes, variables, sel={}, vartype=''):
         # code to change single inputs to a list
         quantiles = np.sort(self._to_sequence(quantiles))
 
         if np.any(quantiles > 1.0) or np.any(quantiles < 0.0):
             raise ValueError("Specified quantiles has value less than 0")
 
-        hist = self.query(predtypes, variables, "hist", sel)
+        if vartype:
+            hist = self.query(predtypes, variables, f"hist_{vartype}", sel)
+        else:
+            hist = self.query(predtypes, variables, "hist", sel)
 
         norm_const = hist.isel(heightAboveGround=0).sum(dim="bin")
 
