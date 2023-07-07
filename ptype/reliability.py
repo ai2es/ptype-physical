@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 
 # https://github.com/hollance/reliability-diagrams/blob/master/reliability_diagrams.py
 
+# This file combines some analysis and plotting functions
 
 def compute_calibration(true_labels, pred_labels, confidences, num_bins=10):
     """Collects predictions into bins used to draw a reliability diagram.
@@ -26,9 +27,11 @@ def compute_calibration(true_labels, pred_labels, confidences, num_bins=10):
         expected_calibration_error: a weighted average of all calibration gaps
         max_calibration_error: the largest calibration gap across all bins
     """
-    assert(len(confidences) == len(pred_labels))
-    assert(len(confidences) == len(true_labels))
-    assert(num_bins > 0)
+    if len(confidences) != len(pred_labels) or len(confidences) != len(true_labels):
+        raise TypeError("Lengths of confidences, pred_labels, and true_labels should be equal.")
+
+    if num_bins <= 0:
+        raise TypeError("Number of bins should be greater than zero.")
 
     bin_size = 1.0 / num_bins
     bins = np.linspace(0.0, 1.0, num_bins + 1)
@@ -67,8 +70,31 @@ def _reliability_diagram_subplot(ax, bin_data,
                                  draw_bin_importance=False,
                                  title="Reliability Diagram", 
                                  xlabel="Confidence", 
-                                 ylabel="Expected Accuracy"):
-    """Draws a reliability diagram into a subplot."""
+                                 ylabel="Expected Accuracy",
+                                 ):
+    """
+    Draws a reliability diagram into the specified subplot.
+
+    Parameters:
+        ax (matplotlib.axes.Axes): The subplot to draw the reliability diagram on.
+        bin_data (dict): A dictionary containing the following keys:
+            - 'accuracies' (numpy.ndarray): Array of accuracy values for each bin.
+            - 'confidences' (numpy.ndarray): Array of confidence values for each bin.
+            - 'counts' (numpy.ndarray): Array of counts for each bin.
+            - 'bins' (numpy.ndarray): Array of bin edges.
+        draw_ece (bool, optional): Flag to draw the Expected Calibration Error (ECE) value on the diagram. Default is True.
+        draw_bin_importance (bool or str, optional): Flag to adjust the appearance of the bins based on their importance. 
+            If False, all bins have equal appearance. If True, bins are adjusted based on their counts. 
+            If 'alpha', bins are adjusted based on counts using varying alpha values. If 'width', bins are adjusted 
+            based on counts using varying bar widths. Default is False.
+        title (str, optional): The title of the reliability diagram. Default is "Reliability Diagram".
+        xlabel (str, optional): The label for the x-axis. Default is "Confidence".
+        ylabel (str, optional): The label for the y-axis. Default is "Expected Accuracy".
+
+    Returns:
+        plot
+    """
+    
     accuracies = bin_data["accuracies"]
     confidences = bin_data["confidences"]
     counts = bin_data["counts"]
@@ -112,7 +138,6 @@ def _reliability_diagram_subplot(ax, bin_data,
 
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
-    #ax.set_xticks(bins)
 
     ax.set_title(title)
     ax.set_xlabel(xlabel)
