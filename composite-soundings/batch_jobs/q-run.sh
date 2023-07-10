@@ -1,18 +1,18 @@
 #!/bin/bash -l
-#PBS -N ptype_rap_k
+#PBS -N ptype_gfs
 #PBS -A NAML0001
 
 ### resource recs:
-### rap: 1h ncpus=24:mem=250GB
+### rap: 1h ncpus=24:mem=500GB
 ### gfs: 1h ncpus=6:mem=50GB
 ### hrrr: 30min ncpus=32 mem=550GB
 ### for hrrr - only run on one case study *day* at a time (or less)
 
-#PBS -l walltime=01:00:00
-#PBS -o outfiles/ptype_rap_k.out
-#PBS -e outfiles/ptype_rap_k.out
+#PBS -l walltime=03:00:00
+#PBS -o outfiles/ptype_gfs_k.out
+#PBS -e outfiles/ptype_gfs_k.out
 #PBS -q casper
-#PBS -l select=1:ncpus=24:mem=250GB
+#PBS -l select=1:ncpus=12:mem=100GB
 #PBS -m a
 #PBS -M dkimpara@ucar.edu
 export TMPDIR=/glade/scratch/$USER/temp

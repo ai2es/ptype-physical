@@ -210,6 +210,25 @@ def compute_prob_and_disagree(ds):
             results = compute_stats(masked_ds, 'disagree', proftypes, predtype)
             for k in res_dict.keys():
                 res_dict[k].append(results[k])
+    ds_concat = [
+        xr.concat(res_ds_list, dim="predtype") for res_ds_list in res_dict.values()
+    ]
+    result = xr.merge(ds_concat)
+
+    return result
+
+
+def compute_prob_and_disagree(ds):
+    ptypes = ["icep", "frzr", "snow", "rain"]
+    proftypes = ["t_h", "dpt_h", "wb_h"]
+    other_pred = ({f'ML_c{ptype}': f'c{ptype}' for ptype in ptypes} |
+                  {f'c{ptype}': f'ML_c{ptype}' for ptype in ptypes}) 
+    
+    res_dict = {"num_obs": [], "frac_abv": [], "means": [], "hists": []}
+
+    for ptype in ptypes:
+        for model in ["ML_c", "c"]:
+            predtype = model + ptype
             
             # compute confident preds
             for confidence in [0.3,0.5,0.7,0.9]:
@@ -221,7 +240,6 @@ def compute_prob_and_disagree(ds):
                 results = compute_stats(masked_ds, f'{confidence}', proftypes, predtype)
                 for k in res_dict.keys():
                     res_dict[k].append(results[k])
-
     ds_concat = [
         xr.concat(res_ds_list, dim="predtype") for res_ds_list in res_dict.values()
     ]
