@@ -23,9 +23,4 @@ module load conda
 conda activate ptype
 cd /glade/u/home/dkimpara/ptype-physical/composite-soundings/batch_jobs
 
-### use following for hrrr:
 python -u test.py
-### use folloiwng for rap and gfs
-### -i 0 for kentucky, 1 for new_york_1, 2 for new_york_2
-### python -u mr-run.py -i 1 -m gfs -o gfs
-
