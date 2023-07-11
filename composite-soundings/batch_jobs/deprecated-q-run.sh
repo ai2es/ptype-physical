@@ -2,6 +2,8 @@
 #PBS -N ptype_gfs
 #PBS -A NAML0001
 
+### deprecated, use qsubPython instead
+
 ### resource recs:
 ### rap: 1h ncpus=24:mem=500GB
 ### gfs: 1h ncpus=6:mem=50GB
