@@ -3,6 +3,47 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import List
 import warnings
+import re
+
+
+def allresources():
+    #get job IDs
+    shell_run = subprocess.run("qstat -u $USER | cut -c1-8 | grep -Eo '[0-9]{1,7}' | tr '\n' ' '",
+                                shell=True,
+                                capture_output=True,
+                                encoding="utf-8",
+                                )
+    if shell_run.stderr: raise RuntimeError(shell_run.stderr)
+    ids = shell_run.stdout.split()
+
+    resources_dict = {}
+    for id in ids:
+        shell_run = subprocess.run(f'''qstat -f {id} | grep -e resources_used -e Job_Name -e Resource_List.mem -e Resource_List.ncpus''',
+                                   shell=True,
+                                   capture_output=True,
+                                   encoding="utf-8")
+        job_resources = resources_out_to_dict(shell_run.stdout)
+        resources_dict[id] = job_resources
+    return resources_dict
+
+def to_gb(s):
+    kb_used = int(s[:-2])
+    return round(kb_used / 1e6, 2)
+
+def resources_out_to_dict(shell_out):
+    job_resources = [s.lstrip() for s in shell_out.split('\n') if s]
+    resources_dict = {}
+    for line in job_resources:
+        components = line.split()
+        resources_dict[components[0]] = components[-1]
+
+    if 'resources_used.mem' in resources_dict.keys():
+        # then vmem should be there too
+        resources_dict['resources_used.mem'] = to_gb(resources_dict['resources_used.mem'])
+        resources_dict['resources_used.vmem'] = to_gb(resources_dict['resources_used.vmem'])
+
+    return resources_dict
+        
 
 @dataclass
 class qsubPython:
@@ -15,9 +56,9 @@ class qsubPython:
     resources: str = None
     outfile: str = 'out.out'
     errorfile: str = 'out.out'
-    job_script: List[str] = field(default_factory=['export TMPDIR=/glade/scratch/$USER/temp',
-                                                   'mkdir -p $TMPDIR',
-                                                   'source /etc/profile.d/modules.sh'])
+    job_script: List[str] = field(default_factory=lambda: ['export TMPDIR=/glade/scratch/$USER/temp',
+                                                           'mkdir -p $TMPDIR',
+                                                           'source /etc/profile.d/modules.sh'])
 
     def set_job_attrs(self, **kwargs):
         keys = list(kwargs.keys())

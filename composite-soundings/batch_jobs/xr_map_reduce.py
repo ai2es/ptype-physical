@@ -180,13 +180,13 @@ def compute_stats(subset, label, proftypes, predtype):
     ####### compute histograms ############
     bins = np.arange(-60, 40, 0.1)
     densities = {
-        f"{var}_hist_{label}": (
-            histogram(
-                subset[var], bins=bins, dim=["x", "y"], density=True
-            ).rename({f"{var}_bin": "bin"})
-        )
-        for var in proftypes
-    }
+        f"{var}_hist_{label}": (histogram(
+                                          subset[var], 
+                                          bins=bins, 
+                                          dim=["x", "y"], 
+                                          density=True
+                                         ).rename({f"{var}_bin": "bin"})
+                                ) for var in proftypes}
     densities = xr.Dataset(densities)
     ######## combine and return #############
     results = {

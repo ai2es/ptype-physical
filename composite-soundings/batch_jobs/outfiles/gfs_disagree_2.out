@@ -1,0 +1,21 @@
+opening /glade/campaign/cisl/aiml/ptype/ptype_case_studies/new_york_2
+
+saving to /glade/work/dkimpara/ptype-aggs/gfs_disagree_2_new_york_2.nc
+
+8 12
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+/glade/work/dkimpara/conda-envs/ptype/lib/python3.10/site-packages/dask/core.py:121: RuntimeWarning: invalid value encountered in divide
+  return func(*(_execute_task(a, cache) for a in args))
+merging
+write to /glade/work/dkimpara/ptype-aggs/gfs_disagree_2_new_york_2.nc successful
