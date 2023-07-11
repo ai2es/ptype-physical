@@ -15,21 +15,22 @@ class qsubPython:
     resources: str = None
     outfile: str = 'out.out'
     errorfile: str = 'out.out'
-    job_script: List[str] = field(default_factory=list)
+    job_script: List[str] = field(default_factory=['export TMPDIR=/glade/scratch/$USER/temp',
+                                                   'mkdir -p $TMPDIR',
+                                                   'source /etc/profile.d/modules.sh'])
 
-    def set_job_args(self, **kwargs):
+    def set_job_attrs(self, **kwargs):
         keys = list(kwargs.keys())
         class_keys = list(self.__dict__.keys())
-
         for k in keys:
-            if k not in class_keys: raise ValueError(f'{k} is not an attr and cannot be set')
+            if k not in class_keys: raise AttributeError(f'{k} is not an attr and cannot be set')
 
         warning_keys = []
         for k in keys:
             if k in ['account', 'user_list', 'queue', 'mail_option']:
                 warning_keys.append(k)
         if warning_keys:
-            warnings.warn(f"You are setting protected keys: {warning_keys}")
+            warnings.warn(f"You are setting protected attrs: {warning_keys}")
         
         self.__dict__.update(kwargs)
 
@@ -41,13 +42,10 @@ class qsubPython:
     
     def submit(self, commands: List[str] = []):
         #takes current job_script and appends commands to it, submits PBS job, prints jobid
-        job_script = self.job_script + commands
-        if not job_script: raise ValueError("no lines to run in body of script!")
-
-        lines = self._args_to_lines() + job_script
-
+        lines = self._args_to_lines() + self.job_script + commands
+        
         temp_qsub_file = 'qsub_temp_script'
-        with open(temp_qsub_file, 'w') as f:
+        with open(temp_qsub_file, 'w') as f: # note: this overwrites the previous file
             for line in lines:
                 f.write(f"{line}\n")
         #submit job
@@ -57,23 +55,22 @@ class qsubPython:
                                 encoding="utf-8",
                                 )
         # output jobid or error message
-        jobID = shell_run.stdout
-        stderr = shell_run.stderr
+        jobID = shell_run.stdout.rstrip()
+        stderr = shell_run.stderr.rstrip()
         if stderr: 
-            raise ValueError(f'Error: {stderr}')
-        elif not jobID: warnings.warn(f"jobID is {jobID}, job may not have submitted. please check qstat. use makefile() method to diagnose problems")
-        print(jobID)
+            raise ChildProcessError(f'Error: {stderr}.\n Please see qsub script {temp_qsub_file}') # doesn't delete the qsub script
+        elif not jobID: 
+            warnings.warn(f"No jobID returned, job may not have submitted. please check qstat. use makefile() method to diagnose problems")
+        else:
+            print(jobID)
 
         #remove qsub script file
         os.remove(temp_qsub_file)
         return jobID
-    def makefile(self, commands=[]):
-        job_script = self.job_script + commands
-        if not job_script: raise ValueError("no lines to run in body of script!")
-
-        lines = self._args_to_lines() + job_script
-
-        temp_qsub_file = 'qsub_temp_script'
+    
+    def makefile(self, commands=[], filename='qsub_script_out'):
+        lines = self._args_to_lines() + self.job_script + commands
+        temp_qsub_file = filename
         with open(temp_qsub_file, 'w') as f:
             for line in lines:
                 f.write(f"{line}\n")
@@ -96,7 +93,6 @@ class qsubPython:
                       f'-e {self.errorfile}']
         job_config = [f'#PBS {s}' for s in job_config]
         return ['#!/bin/bash -l'] + job_config
-
 
 
 
