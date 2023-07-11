@@ -18,13 +18,13 @@ if __name__ == "__main__":
     if not args.m:
         raise ValueError("need to pass in model name (rap, hrrr, gfs)")
     ######### setting save file names and data file dirs #############
-    if args.d:
+    if args.d: #if specifying a directory
         dirpath = args.d
         save_file = f"/glade/work/dkimpara/ptype-aggs/{args.o}.nc"
         intermediate_save_file = (''
             f"/glade/work/dkimpara/ptype-aggs/{args.o}_pre_merge.dump"
         )
-    elif args.i:
+    elif args.i: #if specifying a case study
         case_study = CASE_DICT[int(args.i)]
         dirpath = join(
             "/glade/campaign/cisl/aiml/ptype/ptype_case_studies/", case_study
@@ -36,11 +36,6 @@ if __name__ == "__main__":
     else:
         raise ValueError("need to specify either -i or -d")
 
-    print(f"opening {dirpath}\n")
-    print(f"saving to {save_file}\n")
-
     ############## compute #####################
-    res = xmr.xr_map_reduce(dirpath, args.m, xmr.compute_prob_and_disagree, n_jobs=-1, intermediate_file='') #running without intermediate save
-    res.to_netcdf(save_file)
-
-    print(f"write to {save_file} successful")
+    # change function passed in to determine which computation done
+    res = xmr.xr_map_reduce(dirpath, args.m, xmr.compute_by_disagree, save_file, n_jobs=-1, intermediate_file='') #running without intermediate save

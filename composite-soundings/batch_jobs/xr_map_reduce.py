@@ -53,18 +53,20 @@ def get_dirpaths(model, base_path):
             lower_dir_path.append(dirpath)
     return lower_dir_path
 
-def xr_map_reduce(base_path, model, func, intermediate_file='', n_jobs=-1):
+def xr_map_reduce(base_path, model, func, save_file, intermediate_file='', n_jobs=-1):
+    print(f"opening {base_path}\n")
+    print(f"saving to {save_file}\n")
+
     dirpaths = get_dirpaths(model, base_path)
     if n_jobs == -1:  # setting n_jobs
         num_cpus = get_num_cpus()
         print(len(dirpaths), num_cpus)
         n_jobs = min(len(dirpaths), max(int(num_cpus) - 4, 4))
 
-    ########################## map and reduce ##############################
+    ########################## map  ##############################
     results = Parallel(n_jobs=n_jobs, timeout=99999)(
-        delayed(xr_map)(path, func) for path in dirpaths
+        delayed(xr_map)(path, func) for path in dirpaths #input a partial func here for various computations
     )
-    
     #convert time to init_hr
     results = Parallel(n_jobs=n_jobs, timeout=99999)(
         delayed(time_to_inithr)(res) for res in results
@@ -72,11 +74,18 @@ def xr_map_reduce(base_path, model, func, intermediate_file='', n_jobs=-1):
     # optional: could dump the intermediate file incase merging is taking a really long time
     if intermediate_file:
         dump(results, intermediate_file)
-        print("dumped, now merging")
-    return xr.merge(results)  # datasets will all have some overlapping coords so need to merge
+        print("dumped")
+    ########################## reduce ##############################
+    print('merging')
+    merged_res = xr.merge(results)
+    merged_res.to_netcdf(save_file)
+    print(f"write to {save_file} successful")
+    return merged_res  # datasets will all have some overlapping coords so need to merge
 
 
-def xr_map(dirpath, func):  # function to call with Parallel
+def xr_map(dirpath, func):  
+    # function to call with Parallel, need to preprocess each dataset before computing
+    # preprocessing shared between computations, so they are written here
     ds = xr.open_mfdataset(
         join(dirpath, "*.nc"),
         concat_dim="step",
@@ -95,11 +104,9 @@ def xr_map(dirpath, func):  # function to call with Parallel
             | (ds["cfrzr"] == 1)
         )
     )
-
     if "wb_h" not in list(ds.keys()):
         ds = sounding_utils.wb_stull(ds)
-
-    # adds metadata corresponding to the folder
+    # adds metadata as a dim (case_study_day)
     metadata_dict = get_metadata(dirpath)
     ds = ds.expand_dims(metadata_dict)
 
@@ -109,6 +116,7 @@ def xr_map(dirpath, func):  # function to call with Parallel
     return res.compute()  # dont care about keeping original ds
 
 def compute_func(ds):
+    # computing mean, and densities
     proftypes = ["t_h", "dpt_h", "wb_h"]
 
     res_dict = {"num_obs": [], "frac_abv": [], "means": [], "hists": []}
@@ -192,7 +200,7 @@ def compute_stats(subset, label, proftypes, predtype):
               }
     return results
 
-def compute_prob_and_disagree(ds):
+def compute_by_disagree(ds):
     ptypes = ["icep", "frzr", "snow", "rain"]
     proftypes = ["t_h", "dpt_h", "wb_h"]
     other_pred = ({f'ML_c{ptype}': f'c{ptype}' for ptype in ptypes} |
@@ -214,24 +222,22 @@ def compute_prob_and_disagree(ds):
         xr.concat(res_ds_list, dim="predtype") for res_ds_list in res_dict.values()
     ]
     result = xr.merge(ds_concat)
-
     return result
 
+def compute_by_conf(conf_levels, ds): #conf levels sublist of [0.3,0.5,0.7,0.9]
+    if not isinstance(conf_levels, list):
+        conf_levels = list(conf_levels)
 
-def compute_prob_and_disagree(ds):
     ptypes = ["icep", "frzr", "snow", "rain"]
     proftypes = ["t_h", "dpt_h", "wb_h"]
-    other_pred = ({f'ML_c{ptype}': f'c{ptype}' for ptype in ptypes} |
-                  {f'c{ptype}': f'ML_c{ptype}' for ptype in ptypes}) 
     
     res_dict = {"num_obs": [], "frac_abv": [], "means": [], "hists": []}
 
     for ptype in ptypes:
         for model in ["ML_c", "c"]:
             predtype = model + ptype
-            
             # compute confident preds
-            for confidence in [0.3,0.5,0.7,0.9]:
+            for confidence in conf_levels:
                 if 'ML' in predtype:
                     mask = (ds['ML_' + ptype] >= confidence) & (ds['ML_c' + ptype] == 1) #confident and predicted the ptype
                 else:
@@ -244,5 +250,4 @@ def compute_prob_and_disagree(ds):
         xr.concat(res_ds_list, dim="predtype") for res_ds_list in res_dict.values()
     ]
     result = xr.merge(ds_concat)
-
     return result
