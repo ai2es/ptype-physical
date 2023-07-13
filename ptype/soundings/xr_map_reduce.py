@@ -63,7 +63,7 @@ def xr_map_reduce(base_path, model, func, save_file, intermediate_file="", n_job
         n_jobs = min(len(dirpaths), max(int(num_cpus) - 4, 4))
 
     ########################## map  ##############################
-    np.seterr(divide='ignore', invalid='ignore')
+    np.seterr(divide="ignore", invalid="ignore")
     results = Parallel(n_jobs=n_jobs, timeout=99999)(
         delayed(xr_map)(path, func)
         for path in dirpaths  # input a partial func here for various computations
@@ -115,7 +115,7 @@ def xr_map(dirpath, func):
     res["valid_time"] = valid_time.expand_dims(metadata_dict)
     computed = res.compute()
     del ds
-    return computed # dont care about keeping original ds
+    return computed  # dont care about keeping original ds
 
 
 def compute_by_ptype(ds):
@@ -170,6 +170,7 @@ def compute_by_ptype(ds):
 
     return result
 
+
 def compute_stats(subset, label, proftypes, predtype):
     # compute a set of statistic for a given masked dataset and corresponding predtype
     num_obs = subset["t_h"].isel(heightAboveGround=0).count(dim=("x", "y"))
@@ -204,7 +205,7 @@ def compute_stats(subset, label, proftypes, predtype):
 
 
 def compute_by_disagree(ds):
-    #compute stats for soundings where models disagree
+    # compute stats for soundings where models disagree
     ptypes = ["icep", "frzr", "snow", "rain"]
     proftypes = ["t_h", "dpt_h", "wb_h"]
     other_pred = {f"ML_c{ptype}": f"c{ptype}" for ptype in ptypes} | {
@@ -231,7 +232,7 @@ def compute_by_disagree(ds):
 
 
 def compute_by_conf(conf_levels, ds):  # conf levels sublist of [0.3,0.5,0.7,0.9]
-    #compute stats for soundings where ML is confident
+    # compute stats for soundings where ML is confident
     if not isinstance(conf_levels, list):
         conf_levels = list(conf_levels)
 

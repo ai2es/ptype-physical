@@ -11,29 +11,31 @@ import time
 
 COLOR_DICT = {"t_h": "r", "dpt_h": "b", "wb_h": "c"}
 
+
 def skewCompositeFigAx(figsize=(5, 5), num_subplots=1, rows=1, cols=None):
-    #fig ax setup for skewx fig
-    #returns top subfigure and a list of axs lists
-    
-    if (num_subplots > 1) and (figsize == (5,5)):
-        figsize = (10,5)
-    if cols: #add blank subplots below
+    # fig ax setup for skewx fig
+    # returns top subfigure and a list of axs lists
+
+    if (num_subplots > 1) and (figsize == (5, 5)):
+        figsize = (10, 5)
+    if cols:  # add blank subplots below
         num_subplots = cols
-    
+
     fig = plt.figure(figsize=figsize)
-    sfigs = fig.subfigures(rows,1)
-    if rows==1:
+    sfigs = fig.subfigures(rows, 1)
+    if rows == 1:
         sfigs = [sfigs]
-    
-    skew_axs = sfigs[0].subplots(1, num_subplots, sharey=True,
-                            subplot_kw=dict(projection="skewx", rotation=30))
+
+    skew_axs = sfigs[0].subplots(
+        1, num_subplots, sharey=True, subplot_kw=dict(projection="skewx", rotation=30)
+    )
     axs = skew_axs
-    if num_subplots==1:
+    if num_subplots == 1:
         axs = [axs]
     if rows > 1:
         t_axs = sfigs[1].subplots(1, num_subplots, sharex=True)
         axs = [skew_axs, t_axs]
-    
+
     skew_axs[0].set_ylabel("Height above ground (m)", fontsize=10)
     for ax in skew_axs:
         ax.grid(which="both")
@@ -49,8 +51,9 @@ def skewCompositeFigAx(figsize=(5, 5), num_subplots=1, rows=1, cols=None):
         ax.axvline(x=0, ymin=0, ymax=1, c="0")
         ax.set_ylim(-100, 5100)
         ax.set_xlim(-15, 30)
-    
+
     return sfigs[0], axs
+
 
 ########### data processing ###############
 
@@ -61,6 +64,7 @@ BBOX = {
     "lat_max": 52.615654,
 }
 
+
 def filter_latlon(ds):
     mask = (
         (ds.latitude <= BBOX["lat_max"])
@@ -70,7 +74,8 @@ def filter_latlon(ds):
     )
     return ds.where(mask.compute(), drop=True)
 
-def wb_stull(ds): 
+
+def wb_stull(ds):
     # wrf.wetbulb is super slow because of calls to fortran
     # this fn uses stulls method
 
@@ -85,6 +90,7 @@ def wb_stull(ds):
         - 4.686035
     )
     return ds
+
 
 def frac_abv_zero(ds, x_col, total):
     num_over_zero = (ds[x_col] > 0).any(dim="heightAboveGround").sum()
@@ -107,7 +113,9 @@ def frac_abv_split_time(ds, x_cols):
 
     return num_over_zero / obs
 
+
 ########### data analysis ###############
+
 
 def count_nulls(ds):
     nulls = ds.isnull().sum()
@@ -115,11 +123,13 @@ def count_nulls(ds):
     for var in list(nulls.keys()):
         print(f"{var}: {nulls[var].values}")
 
+
 def count_notnulls(ds):
     notnulls = ds.notnull().sum()
 
     for var in list(notnulls.keys()):
         print(f"{var}: {notnulls[var].values}")
+
 
 def timer(tic, message=""):
     toc = time.time()
@@ -128,6 +138,7 @@ def timer(tic, message=""):
     print(
         f"{message}. Elapsed time: {str(minutes) + ' minutes, ' if minutes else ''}{int(duration % 60)} seconds"
     )
+
 
 def fn_timer(fn):
     tic = time.time()
@@ -141,6 +152,7 @@ def fn_timer(fn):
         f"Elapsed time: {str(minutes) + ' minutes, ' if minutes else ''}{int(duration % 60)} seconds"
     )
     return out
+
 
 def open_ds_dkimpara(
     hour, model, cluster="casper", concat_dim="valid_time", parallel=False
