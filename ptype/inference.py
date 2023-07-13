@@ -12,7 +12,6 @@ import yaml
 import numba
 from numba import jit
 import glob
-import json
 import zarr
 import pygrib
 from pyproj import CRS, Transformer
@@ -41,6 +40,10 @@ def kelvin_to_celsius(temp):
     return temp - 273.15
 
 
+def convert_longitude(lon):
+    """ Convert longitude from -180-180 to 0-360"""
+    return lon % 360
+
 def download_data(date, model, product, save_dir, forecast_hour):
     """ Download data use Herbie for specified dates, model and forecast range.
     Args:
@@ -64,7 +67,7 @@ def download_data(date, model, product, save_dir, forecast_hour):
 
 
 
-def load_data(var_dict, file, model, drop):
+def load_data(var_dict, file, model, extent, drop):
     """
     Load variables from grib file, flatten pressure variables and convert to DataFrame. Supports "gfs", "rap", "hrrr"
     and "nam" models.
@@ -111,13 +114,13 @@ def load_data(var_dict, file, model, drop):
     else:
         nwp_dataset['dpt'].values = kelvin_to_celsius(nwp_dataset['dpt'].values)
     nwp_dataset['hgt_above_sfc'] = nwp_dataset['gh'] - nwp_dataset['orog']
+    nwp_dataset = add_coord_data(file, nwp_dataset, extent)
     flattened_df = df_flatten(nwp_dataset, ['t', 'dpt', 'u', 'v', 'hgt_above_sfc'])
 
     surface_vars = {x: nwp_dataset[x].values.flatten() for x in var_dict["heightAboveGround"] + var_dict["surface"]}
     surface_vars['t2m'] = kelvin_to_celsius(surface_vars['t2m'])
     surface_vars['d2m'] = kelvin_to_celsius(surface_vars['d2m'])
 
-    nwp_dataset = add_coord_data(file, nwp_dataset)
     os.remove(str(file))  # delete grib file
 
     if drop:
@@ -127,12 +130,38 @@ def load_data(var_dict, file, model, drop):
         return nwp_dataset, flattened_df, surface_vars
 
 
-def add_coord_data(file_path, grib_data):
+def subset_extent(nwp_data, extent, transformer=None):
+        """
+        Subset data by given extent in projection coordinates
+        Args:
+            nwp_data: Xr.dataset of NWP data
+            extent: List of coordinates for subsetting (lon_min, lon_max, lat_min, lat_max)
+            transformer: Pyproj Projection transformer object
+
+        Returns:
+            Subsetted Xr.Dataset
+        """
+        lon_min, lon_max, lat_min, lat_max = extent
+        if transformer is not None:
+            x_coords, y_coords = transformer.transform([lon_min, lon_max], [lat_min, lat_max])
+            subset = nwp_data.swap_dims({'y': 'y_projection_coordinate', 'x': 'x_projection_coordinate'}).sel(
+                y_projection_coordinate=slice(y_coords[0], y_coords[1]),
+                x_projection_coordinate=slice(x_coords[0], x_coords[1])).swap_dims(
+                    {'y_projection_coordinate': 'y', 'x_projection_coordinate': 'x'})
+        else:
+            subset = nwp_data.sel(longitude=slice(convert_longitude(lon_min), convert_longitude(lon_max)),
+                                  latitude=slice(lat_max, lat_min))  # GFS orders latitude in descending values :/
+            print(subset)
+        return subset
+
+
+def add_coord_data(file_path, grib_data, extent):
     """
     Add cf-style projection information and projection coordinates.
     Args:
         file_path (str): Path to grib2 file
         grib_data (xr.Dataset): Dataset to add coordinate information to
+        extent (list): List of coordinates to subset (lon_min, lon_max, lat_min, lat_max)
 
     Returns:
 
@@ -152,10 +181,18 @@ def add_coord_data(file_path, grib_data):
         grib_data["y_projection_coordinate"].attrs["Description"] = "Lambert Conformal Conic y-projection coordinates"
         grib_data["x_projection_coordinate"].attrs["Description"] = "Lambert Conformal Conic x-projection coordinates"
 
-        return grib_data.set_coords(["y_projection_coordinate", "x_projection_coordinate"])
+        grib_data = grib_data.set_coords(["y_projection_coordinate", "x_projection_coordinate"])
+        if extent != "full" and extent is not None:
+
+            return subset_extent(grib_data, extent, transformer)
+        else:
+            return grib_data
 
     else:
-        return grib_data
+        if extent != "full" and extent is not None:
+            return subset_extent(grib_data, extent, None)
+        else:
+            return grib_data
 
 
 def convert_and_interpolate(data, surface_data, pressure_levels, height_levels):
@@ -188,9 +225,12 @@ def convert_and_interpolate(data, surface_data, pressure_levels, height_levels):
         height_interp_data[:, 0] = surface_data[sv]
         var_arrays.append(height_interp_data)
 
+    pl_array = np.tile(pressure_levels, len(height_data)).reshape(len(height_data), len(pressure_levels))
+    interpolated_pl = interpolate(height_data, pl_array, height_levels)
+
     all_data = np.concatenate(var_arrays, axis=1)
 
-    return all_data
+    return all_data, interpolated_pl
 
 
 @jit(nopython=True, parallel=True, cache=True)
@@ -214,9 +254,11 @@ def transform_data(input_data, transformer):
     Returns:
         Pandas dataframe of transformed input.
     """
-    transformed_data = transformer.transform(pd.DataFrame(input_data, columns=transformer.x_columns_))
+    transformed_data = transformer.transform(input_data)
 
-    return transformed_data.values
+    return transformed_data
+
+
 
 
 def load_model(model_path, model_file, input_scaler_file, output_scaler_file):
@@ -234,16 +276,15 @@ def load_model(model_path, model_file, input_scaler_file, output_scaler_file):
         conf['batch_size'] = 1000
 
     x_transformer = load_scaler(os.path.join(model_path, "scalers", input_scaler_file))
-    with open(os.path.join(model_path, "scalers", output_scaler_file)) as f:
-        output_scaler = json.load(f)
-    model = CategoricalDNN(**conf["model"])
-    model.build_neural_network(len(x_transformer.x_columns_), len(output_scaler['classes_']))
-    model.model.load_weights(os.path.join(model_path, "models", model_file))
+
+    with open(os.path.join(model_path, "model.yml")) as f:
+        conf = yaml.safe_load(f)
+
+    model = CategoricalDNN().load_model(conf)
 
     return model, x_transformer
 
-
-def grid_predictions(data, preds):
+def grid_predictions(data, preds, interp_df=None, interpolated_pl=None, height_levels=None, add_interp_data=False):
     """
     Populate gridded xarray dataset with ML probabilities and categorical predictions as separate variables.
     Args:
@@ -258,8 +299,7 @@ def grid_predictions(data, preds):
     reshaped_preds = preds.reshape(data['y'].size, data['x'].size, preds.shape[-1])
     for i, (long_v, v) in enumerate(zip(
             ['rain', 'snow', 'ice pellets', 'freezing rain'], ['rain', 'snow', 'icep', 'frzr'])):
-
-        data[f"ML_{v}"] = (['y', 'x'], reshaped_preds[:, :, i].astype('float32'))                       # ML probability
+        data[f"ML_{v}"] = (['y', 'x'], reshaped_preds[:, :, i].astype('float32'))  # ML probability
         data[f"ML_{v}"].attrs = {"Description": f"Machine Learned Probability of {long_v}"}
         data[f"ML_c{v}"] = (['y', 'x'], np.where(reshaped_preds[:, :, -1] == i, 1, 0).astype('uint8'))  # ML categorical
         data[f"ML_c{v}"].attrs = {"Description": f"Machine Learned Categorical {long_v}"}
@@ -273,11 +313,23 @@ def grid_predictions(data, preds):
             data[v] = data[v].astype('float32')
 
     drop_vars = []
-    for v in ["isobaricInhPa", "heightAboveGround", "surface"]:
+    for v in ["heightAboveGround", "surface"]:
         if v in data.coords:
             drop_vars.append(v)
+    if add_interp_data:
 
-    return data.drop(drop_vars)
+        interpolated_gridded = add_interp_gridded(data, interp_df, height_levels)
+        interpolated_gridded['isobaricInhPa_h'] = (['heightAboveGround', 'y', 'x'],
+                                                   np.moveaxis(interpolated_pl.reshape(data['y'].size,
+                                                                                       data['x'].size,
+                                                                                       interpolated_pl.shape[-1]),
+                                                               [0, 1, 2],
+                                                               [1, 2, 0]))
+        interpolated_gridded['isobaricInhPa_h'].attrs = {"Description": "Pressure level at height interpolated levels",
+                                                         "Units": "hPa"}
+        return xr.merge([interpolated_gridded, data.drop(drop_vars)])
+    else:
+        return data.drop(drop_vars)
 
 
 def save_data(dataset, out_path, date, model, forecast_hour, save_format):
@@ -315,5 +367,39 @@ def save_data(dataset, out_path, date, model, forecast_hour, save_format):
     return
 
 
+def add_interp_gridded(nwp_data, interp_data, height_levels):
+    """
+    Convert height interpolated data to xarray format and merge with main dataset.
+    Args:
+        nwp_data (xr.Dataset): Main Numerical Weather Prediciton dataset with ML preds
+        interp_data (np.array): Numpy array of height interpolated values for ML input
+        height_levels: Height levels used for ML input
 
+    Returns:
+        Merged xr.Dataset of NWP/ML data and height interpolated data
+    """
+    x = nwp_data.stack(d=['y', 'x'])['x'].values.astype('int16')
+    y = nwp_data.stack(d=['y', 'x'])['y'].values.astype('int16')
+
+    variables = ['t', 'dpt', 'u', 'v']
+    height_levels = np.arange(height_levels['high'], height_levels['low'] - height_levels['interval'],
+                              -height_levels['interval'])
+    columns = [f"{var}_{level}" for var in variables for level in height_levels]
+
+    new_df = pd.DataFrame(interp_data, columns=columns)
+    new_df['x'] = x
+    new_df['y'] = y
+    new_df = new_df.set_index(['y', 'x'])
+    gridded = new_df.to_xarray()
+
+    datasets = []
+    for var, long_name in zip(['t', 'dpt', 'u', 'v'],
+                              ['temperature', 'dewpoint', 'u-component of wind', 'v-component of wind']):
+        dataset = xr.concat([gridded[f"{var}_{i}"] for i in height_levels],
+                            dim='heightAboveGround').to_dataset().rename({f"{var}_{int(height_levels.max())}": f"{var}_h"})
+        dataset[f"{var}_h"].attrs['Description'] = f"Height interpolated {long_name}"
+        dataset[f"{var}_h"] = dataset[f"{var}_h"].astype('float32')
+        datasets.append(dataset)
+
+    return xr.merge(datasets).drop(['x', 'y']).assign_coords({'heightAboveGround': np.flip(height_levels)})
 
