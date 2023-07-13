@@ -4,12 +4,8 @@ import pandas as pd
 
 import os
 from os.path import join
-import sys
 
-sys.path.append("../")  # lets us import sounding utils package
-# import ptype.
-
-import soundings.utils as sounding_utils
+import utils as sounding_utils
 
 from joblib import Parallel, delayed, dump
 from xhistogram.xarray import histogram
@@ -31,6 +27,7 @@ def time_to_inithr(ds):
     ds["valid_time"] = ds["valid_time"].expand_dims({"init_hr": ds.init_hr})
     return ds.compute()
 
+
 def get_num_cpus():
     if "glade" in os.getcwd():
         num_cpus = subprocess.run(
@@ -43,6 +40,7 @@ def get_num_cpus():
         num_cpus = os.cpu_count()
     return num_cpus
 
+
 def get_dirpaths(model, base_path):
     lower_dir_path = []
     for dirpath, dirnames, filenames in os.walk(base_path):
@@ -53,7 +51,8 @@ def get_dirpaths(model, base_path):
             lower_dir_path.append(dirpath)
     return lower_dir_path
 
-def xr_map_reduce(base_path, model, func, save_file, intermediate_file='', n_jobs=-1):
+
+def xr_map_reduce(base_path, model, func, save_file, intermediate_file="", n_jobs=-1):
     print(f"opening {base_path}\n")
     print(f"saving to {save_file}\n")
 
@@ -64,10 +63,12 @@ def xr_map_reduce(base_path, model, func, save_file, intermediate_file='', n_job
         n_jobs = min(len(dirpaths), max(int(num_cpus) - 4, 4))
 
     ########################## map  ##############################
+    np.seterr(divide='ignore', invalid='ignore')
     results = Parallel(n_jobs=n_jobs, timeout=99999)(
-        delayed(xr_map)(path, func) for path in dirpaths #input a partial func here for various computations
+        delayed(xr_map)(path, func)
+        for path in dirpaths  # input a partial func here for various computations
     )
-    #convert time to init_hr
+    # convert time to init_hr
     results = Parallel(n_jobs=n_jobs, timeout=99999)(
         delayed(time_to_inithr)(res) for res in results
     )
@@ -76,14 +77,14 @@ def xr_map_reduce(base_path, model, func, save_file, intermediate_file='', n_job
         dump(results, intermediate_file)
         print("dumped")
     ########################## reduce ##############################
-    print('merging')
+    print("merging")
     merged_res = xr.merge(results)
     merged_res.to_netcdf(save_file)
     print(f"write to {save_file} successful")
     return merged_res  # datasets will all have some overlapping coords so need to merge
 
 
-def xr_map(dirpath, func):  
+def xr_map(dirpath, func):
     # function to call with Parallel, need to preprocess each dataset before computing
     # preprocessing shared between computations, so they are written here
     ds = xr.open_mfdataset(
@@ -112,11 +113,13 @@ def xr_map(dirpath, func):
 
     res = func(ds)
     res["valid_time"] = valid_time.expand_dims(metadata_dict)
+    computed = res.compute()
+    del ds
+    return computed # dont care about keeping original ds
 
-    return res.compute()  # dont care about keeping original ds
 
-def compute_func(ds):
-    # computing mean, and densities
+def compute_by_ptype(ds):
+    # computing mean, and densities for each ptype
     proftypes = ["t_h", "dpt_h", "wb_h"]
 
     res_dict = {"num_obs": [], "frac_abv": [], "means": [], "hists": []}
@@ -168,6 +171,7 @@ def compute_func(ds):
     return result
 
 def compute_stats(subset, label, proftypes, predtype):
+    # compute a set of statistic for a given masked dataset and corresponding predtype
     num_obs = subset["t_h"].isel(heightAboveGround=0).count(dim=("x", "y"))
     num_obs = xr.Dataset({f"num_obs_{label}": num_obs}).drop_vars("heightAboveGround")
 
@@ -180,13 +184,13 @@ def compute_stats(subset, label, proftypes, predtype):
     ####### compute histograms ############
     bins = np.arange(-60, 40, 0.1)
     densities = {
-        f"{var}_hist_{label}": (histogram(
-                                          subset[var], 
-                                          bins=bins, 
-                                          dim=["x", "y"], 
-                                          density=True
-                                         ).rename({f"{var}_bin": "bin"})
-                                ) for var in proftypes}
+        f"{var}_hist_{label}": (
+            histogram(subset[var], bins=bins, dim=["x", "y"], density=True).rename(
+                {f"{var}_bin": "bin"}
+            )
+        )
+        for var in proftypes
+    }
     densities = xr.Dataset(densities)
     ######## combine and return #############
     results = {
@@ -195,27 +199,28 @@ def compute_stats(subset, label, proftypes, predtype):
         "means": mean,
         "hists": densities,
     }
-    results = {
-                k: v.expand_dims({"predtype": [predtype]}) for k, v in results.items()
-              }
+    results = {k: v.expand_dims({"predtype": [predtype]}) for k, v in results.items()}
     return results
 
+
 def compute_by_disagree(ds):
+    #compute stats for soundings where models disagree
     ptypes = ["icep", "frzr", "snow", "rain"]
     proftypes = ["t_h", "dpt_h", "wb_h"]
-    other_pred = ({f'ML_c{ptype}': f'c{ptype}' for ptype in ptypes} |
-                  {f'c{ptype}': f'ML_c{ptype}' for ptype in ptypes}) 
-    
+    other_pred = {f"ML_c{ptype}": f"c{ptype}" for ptype in ptypes} | {
+        f"c{ptype}": f"ML_c{ptype}" for ptype in ptypes
+    }
+
     res_dict = {"num_obs": [], "frac_abv": [], "means": [], "hists": []}
 
     for ptype in ptypes:
         for model in ["ML_c", "c"]:
             predtype = model + ptype
-            
+
             # compute disagreement
             mask = (ds[predtype] == 1) & (ds[other_pred[predtype]] == 0)
             masked_ds = ds[proftypes].where(mask)
-            results = compute_stats(masked_ds, 'disagree', proftypes, predtype)
+            results = compute_stats(masked_ds, "disagree", proftypes, predtype)
             for k in res_dict.keys():
                 res_dict[k].append(results[k])
     ds_concat = [
@@ -224,13 +229,15 @@ def compute_by_disagree(ds):
     result = xr.merge(ds_concat)
     return result
 
-def compute_by_conf(conf_levels, ds): #conf levels sublist of [0.3,0.5,0.7,0.9]
+
+def compute_by_conf(conf_levels, ds):  # conf levels sublist of [0.3,0.5,0.7,0.9]
+    #compute stats for soundings where ML is confident
     if not isinstance(conf_levels, list):
         conf_levels = list(conf_levels)
 
     ptypes = ["icep", "frzr", "snow", "rain"]
     proftypes = ["t_h", "dpt_h", "wb_h"]
-    
+
     res_dict = {"num_obs": [], "frac_abv": [], "means": [], "hists": []}
 
     for ptype in ptypes:
@@ -238,12 +245,16 @@ def compute_by_conf(conf_levels, ds): #conf levels sublist of [0.3,0.5,0.7,0.9]
             predtype = model + ptype
             # compute confident preds
             for confidence in conf_levels:
-                if 'ML' in predtype:
-                    mask = (ds['ML_' + ptype] >= confidence) & (ds['ML_c' + ptype] == 1) #confident and predicted the ptype
+                if "ML" in predtype:
+                    mask = (ds["ML_" + ptype] >= confidence) & (
+                        ds["ML_c" + ptype] == 1
+                    )  # confident and predicted the ptype
                 else:
-                    mask = (ds['ML_' + ptype] >= confidence) & (ds[predtype] == 0) #ML confident and nwp did not predict the ptype
+                    mask = (ds["ML_" + ptype] >= confidence) & (
+                        ds[predtype] == 0
+                    )  # ML confident and nwp did not predict the ptype
                 masked_ds = ds[proftypes].where(mask)
-                results = compute_stats(masked_ds, f'{confidence}', proftypes, predtype)
+                results = compute_stats(masked_ds, f"{confidence}", proftypes, predtype)
                 for k in res_dict.keys():
                     res_dict[k].append(results[k])
     ds_concat = [
