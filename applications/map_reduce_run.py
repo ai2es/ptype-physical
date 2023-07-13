@@ -1,10 +1,11 @@
 from os.path import join
 import argparse
 import sys
-sys.path.append('../')
+
+sys.path.append("../")
 
 from ptype.soundings import xr_map_reduce as xmr
-from functools import partial # partial may be used in the eval statement
+from functools import partial  # partial may be used in the eval statement
 
 CASE_DICT = {0: "kentucky", 1: "new_york_1", 2: "new_york_2"}
 
