@@ -9,5 +9,5 @@
 #PBS -m a
 #PBS -M cbecker@ucar.edu
 conda activate ptype
-cd /glade/work/cbecker/ptype/
+#cd /glade/work/cbecker/ptype/
 python -u ./scripts/run_inference.py  -c ./config/inference_vaisala_NE.yml
