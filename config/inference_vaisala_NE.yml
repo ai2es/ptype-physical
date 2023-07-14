@@ -1,0 +1,63 @@
+model: "hrrr"
+ML_model_path: "/glade/p/cisl/aiml/ai2es/winter_ptypes/models/classifier_weighted_smallmodel"
+model_file: "model_11.h5"
+input_scaler_file: "input.json"
+output_scaler_file: "output_label.json"
+out_path: "/glade/scratch/username/vaisala_NE/"
+drop_input_data: True
+add_interp_data: False
+n_processors: 16      # Only used if use_dask=False (dask has its own parameters at bottom of config)
+use_dask: False
+save_format: "zarr"   # Supports "zarr" and "netcdf"
+#extent: [-80, -69, 40, 46]  # [min_lon, max_lon, min_lat, max_lat] or "full"
+dates:
+  start: "2023-01-29 00:00"
+  end: "2023-03-31 23:00"
+  frequency: "1H"
+
+forecast_range:
+  start: 0
+  end: 18
+  interval: 1
+
+height_levels:
+  low: 0
+  high: 5000
+  interval: 250
+
+variables:
+  model:
+    rap:
+      isobaricInhPa: ["t", "u", "v", "r", "gh"]
+      surface: ["orog", "crain", "csnow", "cicep", "cfrzr"]
+      heightAboveGround: ["t2m", "d2m", "u10", "v10"]
+      product: "awp130pgrb"
+    hrrr:
+      isobaricInhPa: ["t", "u", "v", "dpt", "gh"]
+      surface: ["orog", "crain", "csnow", "cicep", "cfrzr"]
+      heightAboveGround: ["t2m", "d2m", "u10", "v10"]
+      product: "prs"
+    gfs:
+      isobaricInhPa: [ "t", "u", "v", "q", "gh" ]
+      surface: ["orog", "crain", "csnow", "cicep", "cfrzr"]
+      heightAboveGround: [ "t2m", "d2m", "u10", "v10" ]
+      product: "pgrb2.0p25"
+    nam:
+      isobaricInhPa: [ "t", "u", "v", "dpt", "gh" ]
+      surface: ["orog", "crain", "csnow", "cicep", "cfrzr"]
+      heightAboveGround: [ "t2m", "d2m", "u10", "v10" ]
+      product: "conusnest.hiresf"
+
+dask_params:
+  PBS:
+    resource_spec: "select=1:ncpus=12:mem=64GB"
+    processes: 12
+    project: "NAML0001"
+    n_workers: 1
+    queue: "casper"
+    walltime: "08:00:00"
+    memory: "1TB"
+    interface: "ib0"
+    local_directory: "/glade/work/cbecker/ptype-physical/dask/"
+    log_directory: "/glade/work/cbecker/ptype-physical/dask_logs/"
+  n_jobs: 5
