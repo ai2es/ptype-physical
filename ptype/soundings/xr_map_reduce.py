@@ -5,7 +5,7 @@ import pandas as pd
 import os
 from os.path import join
 
-import utils as sounding_utils
+import ptype.soundings.utils as sounding_utils
 
 from joblib import Parallel, delayed, dump
 from xhistogram.xarray import histogram
@@ -59,7 +59,7 @@ def xr_map_reduce(base_path, model, func, save_file, intermediate_file="", n_job
     dirpaths = get_dirpaths(model, base_path)
     if n_jobs == -1:  # setting n_jobs
         num_cpus = get_num_cpus()
-        print(len(dirpaths), num_cpus)
+        print(f'Num Folders: {len(dirpaths)}, Num CPUS: {num_cpus}')
         n_jobs = min(len(dirpaths), max(int(num_cpus) - 4, 4))
 
     ########################## map  ##############################

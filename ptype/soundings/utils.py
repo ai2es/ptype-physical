@@ -29,6 +29,9 @@ def skewCompositeFigAx(figsize=(5, 5), num_subplots=1, rows=1, cols=None):
     skew_axs = sfigs[0].subplots(
         1, num_subplots, sharey=True, subplot_kw=dict(projection="skewx", rotation=30)
     )
+    if num_subplots==1:
+        skew_axs = [skew_axs]
+
     axs = skew_axs
     if num_subplots == 1:
         axs = [axs]
@@ -51,7 +54,8 @@ def skewCompositeFigAx(figsize=(5, 5), num_subplots=1, rows=1, cols=None):
         ax.axvline(x=0, ymin=0, ymax=1, c="0")
         ax.set_ylim(-100, 5100)
         ax.set_xlim(-15, 30)
-
+    if rows == 1:
+        axs = skew_axs
     return sfigs[0], axs
 
 
@@ -119,7 +123,6 @@ def frac_abv_split_time(ds, x_cols):
 
 def count_nulls(ds):
     nulls = ds.isnull().sum()
-
     for var in list(nulls.keys()):
         print(f"{var}: {nulls[var].values}")
 

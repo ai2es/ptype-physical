@@ -1,3 +1,5 @@
+# call this script from qsub script
+
 from os.path import join
 import argparse
 import sys
