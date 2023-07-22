@@ -1,23 +1,32 @@
 # plotting utilities
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
+import matplotlib.animation as animation
+from matplotlib.animation import FuncAnimation
 import seaborn as sns
 
+import pandas as pd
 import numpy as np
 from sklearn.metrics import confusion_matrix
 from cartopy import crs as ccrs
 from cartopy import feature as cfeature
 import os
 
-from matplotlib.animation import FuncAnimation
-import matplotlib.animation as animation
 
-
-def ptype_hist(df, col, dataset, model_name, bins=None, save_location=None):
+# plotting functions
+def ptype_hist(df, col, dataset, model_name, bins=None, save_location=None, transparent_fig=False):
     """
     Function to plot a histogram of a specified variable when
     the percent of each ptype is greater than 0.
+
+    requires 4 columns to be within the dataframe: ra_percent, sn_percent,
+    pl_percent, rzra_percent.
+
+    transparent_fig only matters if saving out the figure. True or False are the options
     """
+    if not type(df) is pd.core.frame.DataFrame:
+        raise TypeError("df needs to be a dataframe")
+
     ra = df[col][df["ra_percent"] > 0]
     sn = df[col][df["sn_percent"] > 0]
     pl = df[col][df["pl_percent"] > 0]
@@ -36,7 +45,7 @@ def ptype_hist(df, col, dataset, model_name, bins=None, save_location=None):
             ax.ravel()[p].set_title(f"{dataset} {col} {classes[p]}")
 
     if save_location:
-        plt.savefig(save_location, dpi=300, bbox_inches="tight")
+        plt.savefig(save_location, dpi=300, bbox_inches="tight", transparent=transparent_fig)
 
     plt.show()
 
@@ -50,11 +59,20 @@ def plot_2d_hist(
     xlabel=None,
     ylabel=None,
     save_location=None,
-):
+    transparent_fig=False):
+
     """
-    Function to plot a 2D histogram of the joint
-    distribution of 2 variables.
+    Parameters:
+        x (array-like): Values of the first variable.
+        y (array-like): Values of the second variable.
+        bins (int or array-like, optional): The number of bins to use for the histogram. If not provided, a default binning will be used.
+        title (str, optional): The title of the plot.
+        xlabel (str, optional): The label for the x-axis.
+        ylabel (str, optional): The label for the y-axis.
+        save_location (str, optional): The file path where the plot will be saved.
+        transparent_fig: if you want it the saved out figure to be transparent 
     """
+
     fig, ax = plt.subplots(dpi=150)
     cmap = cm.binary
     if bins:
@@ -72,14 +90,26 @@ def plot_2d_hist(
     ax.grid(True, alpha=0.25)
 
     if save_location:
-        plt.savefig(save_location, dpi=300, bbox_inches="tight")
+        plt.savefig(save_location, dpi=300, bbox_inches="tight", transparent=transparent_fig)
 
     plt.show()
 
 
 def plot_scatter(
-    x, y, model_name, title=None, xlabel=None, ylabel=None, save_location=None
-):
+    x, y, model_name, title=None, xlabel=None, ylabel=None, save_location=None, transparent_fig=False):
+    """
+    Plot a scatter plot of data points with optional title, labels, and saving options.
+
+    Args:
+        x (array-like): The x-coordinates of the data points.
+        y (array-like): The y-coordinates of the data points.
+        title (str, optional): The title of the plot. Defaults to None.
+        xlabel (str, optional): The label for the x-axis. Defaults to None.
+        ylabel (str, optional): The label for the y-axis. Defaults to None.
+        save_location (str, optional): The file path to save the plot image. Defaults to None.
+        transparent_fig: if you want it the saved out figure to be transparent 
+    """
+
     fig, ax = plt.subplots(dpi=150)
     ax.scatter(x, y, s=2, c="k")
     if title:
@@ -89,13 +119,13 @@ def plot_scatter(
     if ylabel:
         ax.set_ylabel(ylabel, fontsize=12)
 
-    x1 = np.linspace(-40, 36, 1000)
+    x1 = np.linspace(-40, 36, 1000) # any reason why a user would want to change this?
     y1 = x1
     ax.plot(x1, y1, "-b")
     ax.grid(True, alpha=0.25)
 
     if save_location:
-        plt.savefig(save_location, dpi=300, bbox_inches="tight")
+        plt.savefig(save_location, dpi=300, bbox_inches="tight", transparent=transparent_fig)
 
     plt.show()
 
@@ -225,6 +255,9 @@ def coverage_figures(
 def conus_plot(
     df, dataset="mping", column="pred_label", title="Predicted", save_path=False
 ):
+    '''
+    Contiential US plot. Depends on cartopy.
+    '''
 
     latN = 54.0
     latS = 20.0
@@ -429,3 +462,5 @@ def video(
     # plt.show()
     writergif = animation.PillowWriter(fps=1)
     ani.save(save_path, writer=writergif, dpi=300)
+
+# end of file
