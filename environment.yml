@@ -38,6 +38,7 @@ dependencies:
     - pyarrow
     - tensorflow
     - tensorflow-probability
+    - tensorrt
     - hagelslag
     - imblearn
     - git+https://github.com/NCAR/bridgescaler
