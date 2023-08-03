@@ -1,0 +1,18 @@
+#!/bin/bash -l
+#PBS -A NAML0001
+#PBS -M saavedrab@ucar.edu
+#PBS -q casper
+#PBS -m a
+#PBS -N xai_perm
+#PBS -l walltime=24:00:00
+#PBS -l select=1:ncpus=8:mem=25GB
+#PBS -o outfiles/xai_perm.out
+#PBS -e outfiles/xai_perm.out
+export TMPDIR=/glade/scratch/$USER/temp
+mkdir -p $TMPDIR
+source /etc/profile.d/modules.sh
+module load conda
+conda activate ptype
+cd work/saavedrab/ptype-physical/notebooks/
+mkdir -p outfiles
+python -u xai_perm.py
