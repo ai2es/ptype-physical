@@ -3,7 +3,7 @@ ML_model_path: "/glade/p/cisl/aiml/ai2es/winter_ptypes/models/classifier_weighte
 model_file: "model_11.h5"
 input_scaler_file: "input.json"
 output_scaler_file: "output_label.json"
-out_path: "/glade/scratch/username/vaisala_NE/"
+out_path: "/glade/scratch/dgagne/vaisala_NE/"
 drop_input_data: True
 add_interp_data: False
 n_processors: 16      # Only used if use_dask=False (dask has its own parameters at bottom of config)
@@ -56,8 +56,8 @@ dask_params:
     n_workers: 1
     queue: "casper"
     walltime: "08:00:00"
-    memory: "1TB"
+    memory: "500GB"
     interface: "ib0"
-    local_directory: "/glade/work/cbecker/ptype-physical/dask/"
-    log_directory: "/glade/work/cbecker/ptype-physical/dask_logs/"
+    local_directory: "/glade/work/dgagne/ptype-physical/"
+    log_directory: "/glade/work/dgagne/ptype-physical/dask_logs/"
   n_jobs: 5

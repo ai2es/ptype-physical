@@ -2,8 +2,8 @@ import argparse
 import os
 import yaml
 import pandas as pd
-from ptype.inference import download_data, load_data, convert_and_interpolate
-from ptype.inference import load_model, transform_data, grid_predictions, save_data
+from ptype.inference import (download_data, load_data, convert_and_interpolate
+    load_model, transform_data, grid_predictions, save_data)
 import itertools
 from multiprocessing import Pool
 from dask.distributed import Client
@@ -29,12 +29,17 @@ def main(config, username, date, forecast_hour):
                                      model=nwp_model,
                                      extent=config["extent"],
                                      drop=config["drop_input_data"])
-
+    print("DS:", ds)
+    print("DF:", df)
     data, interpolated_pl = convert_and_interpolate(data=df,
                                                     surface_data=surface_vars,
                                                     pressure_levels=ds["isobaricInhPa"],
                                                     height_levels=config["height_levels"])
 
+    print("Data")
+    print(data)
+    print("Interpolated PL")
+    print(interpolated_pl)
     x_data = transform_data(input_data=data,
                             transformer=transformer)
 

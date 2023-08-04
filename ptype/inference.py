@@ -168,13 +168,14 @@ def add_coord_data(file_path, grib_data, extent):
     """
     with pygrib.open(str(file_path)) as grb:
         msg = grb.message(1)
+        print(msg.projparams)
         cf_params = CRS(msg.projparams).to_cf()
 
     grib_data.attrs['projection'] = str(cf_params)
 
     if msg.projparams['proj'] == 'lcc':
 
-        transformer = Transformer.from_crs(CRS("lonlat"), CRS(msg.projparams))
+        transformer = Transformer.from_crs('epsg:4326', CRS(msg.projparams))
         x_proj_coord, y_proj_coord = transformer.transform(grib_data['longitude'], grib_data['latitude'])
         grib_data["y_projection_coordinate"] = ('y', y_proj_coord[:, 0])
         grib_data["x_projection_coordinate"] = ('x', x_proj_coord[0, :])
