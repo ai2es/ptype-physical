@@ -18,14 +18,14 @@ def main(config, username, date, forecast_hour):
                                     model_file=config["model_file"],
                                     input_scaler_file=config["input_scaler_file"],
                                     output_scaler_file=config["output_scaler_file"])
-    file = download_data(date=date,
+    mod_file = download_data(date=date,
                          model=config["model"],
                          product=config["variables"]["model"][nwp_model]["product"],
                          save_dir=out_path,
                          forecast_hour=forecast_hour)
 
     ds, df, surface_vars = load_data(var_dict=config["variables"]["model"][nwp_model],
-                                     file=file,
+                                     file=mod_file,
                                      model=nwp_model,
                                      extent=config["extent"],
                                      drop=config["drop_input_data"])
@@ -50,7 +50,8 @@ def main(config, username, date, forecast_hour):
               model=config["model"],
               forecast_hour=forecast_hour,
               save_format=config["save_format"])
-    del ds, df, surface_vars, data, x_data, interpolated_pl, file, model, transformer, predictions, gridded_preds
+    os.remove(str(mod_file))  # delete grib file
+    #del ds, df, surface_vars, data, x_data, interpolated_pl, file, model, transformer, predictions, gridded_preds
 
 
 if __name__ == "__main__":
@@ -88,8 +89,8 @@ if __name__ == "__main__":
         n_procs = int(config["n_processors"])
         if n_procs == 1:
             for main_arg in main_args:
-                print(main_arg)
-                main(*main_arg)
+                print(main_arg[2], main_arg[3])
+                #main(*main_arg)
         else:
             with Pool(n_procs) as pool:
-                pool.starmap(main, main_args)
+                pool.starmap(main, main_args, 432)

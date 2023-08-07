@@ -6,10 +6,10 @@ output_scaler_file: "output_label.json"
 out_path: "/glade/scratch/dgagne/vaisala_NE/"
 drop_input_data: True
 add_interp_data: False
-n_processors: 18      # Only used if use_dask=False (dask has its own parameters at bottom of config)
+n_processors: 24      # Only used if use_dask=False (dask has its own parameters at bottom of config)
 use_dask: False
 save_format: "zarr"   # Supports "zarr" and "netcdf"
-extent: [-80, -69, 40, 46]  # [min_lon, max_lon, min_lat, max_lat] or "full"
+extent: [-81, -67, 40, 46]  # [min_lon, max_lon, min_lat, max_lat] or "full"
 dates:
   start: "2023-01-29 00:00"
   end: "2023-03-31 23:00"

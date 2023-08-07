@@ -130,7 +130,6 @@ def load_data(var_dict, file, model, extent, drop):
     surface_vars['d2m'] = kelvin_to_celsius(surface_vars['d2m'])
 
 
-    os.remove(str(file))  # delete grib file
 
     if drop:
         dropped = var_dict["isobaricInhPa"] + ['hgt_above_sfc'] + ['dpt']
