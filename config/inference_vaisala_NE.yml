@@ -6,7 +6,7 @@ output_scaler_file: "output_label.json"
 out_path: "/glade/scratch/dgagne/vaisala_NE/"
 drop_input_data: True
 add_interp_data: False
-n_processors: 16      # Only used if use_dask=False (dask has its own parameters at bottom of config)
+n_processors: 18      # Only used if use_dask=False (dask has its own parameters at bottom of config)
 use_dask: False
 save_format: "zarr"   # Supports "zarr" and "netcdf"
 extent: [-80, -69, 40, 46]  # [min_lon, max_lon, min_lat, max_lat] or "full"
@@ -50,14 +50,14 @@ variables:
 
 dask_params:
   PBS:
-    resource_spec: "select=1:ncpus=12:mem=64GB"
-    processes: 12
+    resource_spec: "select=1:ncpus=1:mem=64GB"
+    processes: 1
     project: "NAML0001"
     n_workers: 1
     queue: "casper"
-    walltime: "08:00:00"
+    walltime: "03:00:00"
     memory: "500GB"
     interface: "ib0"
     local_directory: "/glade/work/dgagne/ptype-physical/"
     log_directory: "/glade/work/dgagne/ptype-physical/dask_logs/"
-  n_jobs: 5
+  n_jobs: 1

@@ -2,7 +2,7 @@ import argparse
 import os
 import yaml
 import pandas as pd
-from ptype.inference import (download_data, load_data, convert_and_interpolate
+from ptype.inference import (download_data, load_data, convert_and_interpolate,
     load_model, transform_data, grid_predictions, save_data)
 import itertools
 from multiprocessing import Pool
@@ -11,7 +11,7 @@ from dask_jobqueue import PBSCluster
 
 
 def main(config, username, date, forecast_hour):
-
+    print("starting", date, forecast_hour)
     out_path = config["out_path"].replace("username", username)
     nwp_model = config["model"]
     model, transformer = load_model(model_path=config["ML_model_path"],
@@ -29,21 +29,15 @@ def main(config, username, date, forecast_hour):
                                      model=nwp_model,
                                      extent=config["extent"],
                                      drop=config["drop_input_data"])
-    print("DS:", ds)
-    print("DF:", df)
     data, interpolated_pl = convert_and_interpolate(data=df,
                                                     surface_data=surface_vars,
                                                     pressure_levels=ds["isobaricInhPa"],
                                                     height_levels=config["height_levels"])
 
-    print("Data")
-    print(data)
-    print("Interpolated PL")
-    print(interpolated_pl)
     x_data = transform_data(input_data=data,
                             transformer=transformer)
 
-    predictions = model.predict(x_data)
+    predictions = model.predict(x_data, batch_size=2048)
     gridded_preds = grid_predictions(data=ds,
                                      preds=predictions,
                                      interp_df=data,
@@ -91,5 +85,11 @@ if __name__ == "__main__":
         _ = [tasks[i].result() for i in range(len(tasks))]
 
     else:
-        with Pool(processes=config["n_processors"]) as pool:
-            pool.starmap(main, main_args)
+        n_procs = int(config["n_processors"])
+        if n_procs == 1:
+            for main_arg in main_args:
+                print(main_arg)
+                main(*main_arg)
+        else:
+            with Pool(n_procs) as pool:
+                pool.starmap(main, main_args)

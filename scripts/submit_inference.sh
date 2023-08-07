@@ -5,7 +5,7 @@
 #PBS -o ptype_inference.out
 #PBS -e ptype_inference.out
 #PBS -q casper
-#PBS -l select=1:ncpus=18:mem=64GB
+#PBS -l select=1:ncpus=18:mem=128GB
 #PBS -m a
 #PBS -M dgagne@ucar.edu
 conda activate ptype
