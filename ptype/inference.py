@@ -14,7 +14,7 @@ from numba import jit
 import glob
 import zarr
 import pygrib
-from pyproj import CRS, Transformer
+from pyproj import Proj, CRS, Transformer
 
 def df_flatten(ds, varsP, vertical_level_name='isobaricInhPa'):
     """  Split pressure level variables by pressure level, reassign and return as flattened Dataframe.
@@ -87,15 +87,19 @@ def load_data(var_dict, file, model, extent, drop):
         for var in value:
             grib = cfgrib.open_dataset(file, backend_kwargs={
                 "filter_by_keys": {'typeOfLevel': key, 'cfVarName': var, 'stepType': 'instant'}})
-            if len(grib) == 0:
-                grib = cfgrib.open_dataset(file, backend_kwargs={
-                    "filter_by_keys": {'typeOfLevel': key, 'shortName': var, 'stepType': 'instant'}})
+            #if len(grib) == 0:
+            #    grib = cfgrib.open_dataset(file, backend_kwargs={
+            #        "filter_by_keys": {'typeOfLevel': key, 'shortName': var, 'stepType': 'instant'}})
+            if "heightAboveGround" in grib.variables.keys():
+                grib = grib.drop_vars("heightAboveGround")
             grib_data.append(grib)
 
     for idx in glob.glob(str(file) + '*.idx'):
         os.remove(idx)  # delete index files that are created when opening grib
-    nwp_dataset = xr.merge(grib_data, compat='override').load()
+    nwp_dataset = xr.merge(grib_data).load()
+
     nwp_dataset['t'].values = kelvin_to_celsius(nwp_dataset['t'].values)
+    nwp_dataset['t'].attrs["units"] = 'degC'
     if model == "rap":
         nwp_dataset['dpt'] = dewpoint_from_relative_humidity(nwp_dataset['t'] * units.degC,
                                                              nwp_dataset['r'].values / 100)
@@ -113,15 +117,19 @@ def load_data(var_dict, file, model, extent, drop):
         nwp_dataset = nwp_dataset.rename_dims({'latitude': 'y', 'longitude': 'x'})
     else:
         nwp_dataset['dpt'].values = kelvin_to_celsius(nwp_dataset['dpt'].values)
+        nwp_dataset['dpt'].attrs["units"] = 'degC'
     nwp_dataset['hgt_above_sfc'] = nwp_dataset['gh'] - nwp_dataset['orog']
-    nwp_dataset = add_coord_data(file, nwp_dataset, extent)
+    nwp_dataset['hgt_above_sfc'].attrs["units"] = 'm'
+    nwp_dataset = get_subset(nwp_dataset, extent)
+    #nwp_dataset = add_coord_data(file, nwp_dataset, extent)
+
     flattened_df = df_flatten(nwp_dataset, ['t', 'dpt', 'u', 'v', 'hgt_above_sfc'])
 
     surface_vars = {x: nwp_dataset[x].values.flatten() for x in var_dict["heightAboveGround"] + var_dict["surface"]}
     surface_vars['t2m'] = kelvin_to_celsius(surface_vars['t2m'])
     surface_vars['d2m'] = kelvin_to_celsius(surface_vars['d2m'])
 
-    os.remove(str(file))  # delete grib file
+
 
     if drop:
         dropped = var_dict["isobaricInhPa"] + ['hgt_above_sfc'] + ['dpt']
@@ -130,7 +138,26 @@ def load_data(var_dict, file, model, extent, drop):
         return nwp_dataset, flattened_df, surface_vars
 
 
-def subset_extent(nwp_data, extent, transformer=None):
+def get_subset(nwp_data, extent):
+    """
+    Subset data by the given extent by selecting all points that fall between the grid cells closest to the southwest
+    and north east lon-lat coordinates specified in extent.
+    Args:
+        nwp_data: Xr.dataset of NWP data
+        extent: List of coordinates for subsetting (lon_min, lon_max, lat_min, lat_max)
+
+    """
+    sw_lon, ne_lon, sw_lat, ne_lat = extent
+    if sw_lon < 0:
+        sw_lon += 360
+    if ne_lon < 0:
+        ne_lon += 360
+    sw_yi, sw_xi = np.unravel_index(np.argmin((nwp_data["longitude"].values - sw_lon) ** 2 + (nwp_data["latitude"].values - sw_lat) ** 2), nwp_data["longitude"].shape)
+    ne_yi, ne_xi = np.unravel_index(np.argmin((nwp_data["longitude"].values - ne_lon) ** 2 + (nwp_data["latitude"].values - ne_lat) ** 2), nwp_data["longitude"].shape)
+    return nwp_data.isel(x=slice(sw_xi, ne_xi), y=slice(sw_yi, ne_yi))
+
+
+def subset_extent(nwp_data, extent, data_proj=None):
         """
         Subset data by given extent in projection coordinates
         Args:
@@ -142,8 +169,9 @@ def subset_extent(nwp_data, extent, transformer=None):
             Subsetted Xr.Dataset
         """
         lon_min, lon_max, lat_min, lat_max = extent
-        if transformer is not None:
-            x_coords, y_coords = transformer.transform([lon_min, lon_max], [lat_min, lat_max])
+        if data_proj is not None:
+            x_coords, y_coords = data_proj(np.array([lon_min, lon_max], dtype=np.float64),
+                                                       np.array([lat_min, lat_max], dtype=np.float64))
             subset = nwp_data.swap_dims({'y': 'y_projection_coordinate', 'x': 'x_projection_coordinate'}).sel(
                 y_projection_coordinate=slice(y_coords[0], y_coords[1]),
                 x_projection_coordinate=slice(x_coords[0], x_coords[1])).swap_dims(
@@ -169,22 +197,24 @@ def add_coord_data(file_path, grib_data, extent):
     with pygrib.open(str(file_path)) as grb:
         msg = grb.message(1)
         cf_params = CRS(msg.projparams).to_cf()
-
+        proj_params = msg.projparams
     grib_data.attrs['projection'] = str(cf_params)
 
-    if msg.projparams['proj'] == 'lcc':
-
-        transformer = Transformer.from_crs(CRS("lonlat"), CRS(msg.projparams))
-        x_proj_coord, y_proj_coord = transformer.transform(grib_data['longitude'], grib_data['latitude'])
+    if proj_params == 'lcc':
+        data_proj = Proj(proj_params)
+        #transformer = Transformer.from_crs(CRS({"proj": "eqc"}), CRS(proj_params))
+        #x_proj_coord, y_proj_coord = transformer.transform(grib_data['longitude'], grib_data['latitude'])
+        print(grib_data.variables.keys())
+        x_proj_coord, y_proj_coord = data_proj(grib_data["longitude"].values, grib_data["latitude"].values)
         grib_data["y_projection_coordinate"] = ('y', y_proj_coord[:, 0])
         grib_data["x_projection_coordinate"] = ('x', x_proj_coord[0, :])
-        grib_data["y_projection_coordinate"].attrs["Description"] = "Lambert Conformal Conic y-projection coordinates"
-        grib_data["x_projection_coordinate"].attrs["Description"] = "Lambert Conformal Conic x-projection coordinates"
+        #grib_data["y_projection_coordinate"].attrs["Description"] = "Lambert Conformal Conic y-projection coordinates"
+        #grib_data["x_projection_coordinate"].attrs["Description"] = "Lambert Conformal Conic x-projection coordinates"
 
         grib_data = grib_data.set_coords(["y_projection_coordinate", "x_projection_coordinate"])
         if extent != "full" and extent is not None:
 
-            return subset_extent(grib_data, extent, transformer)
+            return subset_extent(grib_data, extent, data_proj)
         else:
             return grib_data
 
