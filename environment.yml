@@ -45,11 +45,12 @@ dependencies:
     - pyarrow
     - tensorflow
     - tensorflow-probability
+    - tensorrt
     - hagelslag
     - imblearn
-    - git+https://github.com/NCAR/bridgescaler
     - git+https://github.com/NCAR/echo-opt
     - git+https://github.com/ai2es/evidential.git
     - bridgescaler
+    - zarr
     - .
 

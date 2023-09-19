@@ -131,3 +131,4 @@ dmypy.json
 # log files
 *.e*
 *.out
+notebooks/.DS_Store
