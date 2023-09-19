@@ -8,6 +8,7 @@ dependencies:
   - numpy
   - scipy
   - matplotlib
+  - seaborn
   - xarray
   - netcdf4
   - dask
@@ -27,13 +28,21 @@ dependencies:
   - flake8
   - requests
   - metpy
+  - herbie-data
+  - metpy
+  - cfgrib
+  - yaml
+  - numba
+  - dask-jobqueue
   - pip:
     - pyarrow
     - tensorflow
     - tensorflow-probability
+    - tensorrt
     - hagelslag
     - imblearn
-    - git+https://github.com/NCAR/bridgescaler
     - git+https://github.com/NCAR/echo-opt
     - git+https://github.com/ai2es/evidential.git
+    - bridgescaler
+    - zarr
     - .

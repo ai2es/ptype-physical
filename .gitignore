@@ -127,3 +127,7 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# log files
+*.e*
+notebooks/.DS_Store

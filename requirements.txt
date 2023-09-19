@@ -9,4 +9,10 @@ jupyterlab
 cartopy
 requests
 metpy
+yaml
+cfgrib
+bridgescaler
+herbie-data
 joblib
+numba
+dask-jobqueue

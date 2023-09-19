@@ -11,6 +11,7 @@ from sklearn.preprocessing import (
     OneHotEncoder,
     LabelEncoder,
     RobustScaler,
+    QuantileTransformer,
 )
 from bridgescaler.group import GroupMinMaxScaler, GroupRobustScaler, GroupStandardScaler
 from sklearn.model_selection import GroupShuffleSplit
@@ -47,9 +48,9 @@ def load_ptype_data(
     dates = sorted([x[-16:-8] for x in os.listdir(data_path)])
 
     data = {}
-    data["train"] = dates[dates.index(train_start): dates.index(train_end) + 1]
-    data["val"] = dates[dates.index(val_start): dates.index(val_end) + 1]
-    data["test"] = dates[dates.index(test_start): dates.index(test_end) + 1]
+    data["train"] = dates[dates.index(train_start) : dates.index(train_end) + 1]
+    data["val"] = dates[dates.index(val_start) : dates.index(val_end) + 1]
+    data["test"] = dates[dates.index(test_start) : dates.index(test_end) + 1]
 
     for split in data.keys():
         dfs = []
@@ -57,6 +58,65 @@ def load_ptype_data(
             f = f"{source}_rap_{date}.parquet"
             dfs.append(pd.read_parquet(os.path.join(data_path, f)))
         data[split] = pd.concat(dfs, ignore_index=True)
+
+    return data
+
+
+def load_ptype_uq(conf, data_split=0, verbose=0, drop_mixed=False):
+
+    # Load
+    df = pd.read_parquet(conf["data_path"])
+
+    # Drop mixed cases
+    if drop_mixed:
+        logger.info("Dropping data points with mixed observations")
+        c1 = df["ra_percent"] == 1.0
+        c2 = df["sn_percent"] == 1.0
+        c3 = df["pl_percent"] == 1.0
+        c4 = df["fzra_percent"] == 1.0
+        condition = c1 | c2 | c3 | c4
+        df = df[condition].copy()
+
+    # QC-Filter
+    qc_value = str(conf["qc"])
+    cond1 = df[f"wetbulb{qc_value}_filter"] == 0.0
+    cond2 = df["usa"] == 1.0
+    dg = df[cond1 & cond2].copy()
+
+    dg["day"] = dg["datetime"].apply(lambda x: str(x).split(" ")[0])
+    dg["id"] = range(dg.shape[0])
+
+    # Select test cases
+    test_days_c1 = dg["day"].isin(
+        [day for case in conf["case_studies"].values() for day in case]
+    )
+    test_days_c2 = dg["day"] >= conf["test_cutoff"]
+    test_condition = test_days_c1 | test_days_c2
+
+    # Partition the data into trainable-only and test-only splits
+    train_data = dg[~test_condition].copy()
+    test_data = dg[test_condition].copy()
+
+    # Make N train-valid splits using day as grouping variable, return "data_split" split
+    gsp = GroupShuffleSplit(
+        n_splits=conf["ensemble"]["n_splits"],
+        random_state=conf["seed"],
+        train_size=conf["train_size1"],
+    )
+    splits = list(gsp.split(train_data, groups=train_data["day"]))
+
+    train_index, valid_index = splits[data_split]
+    train_data, valid_data = (
+        train_data.iloc[train_index].copy(),
+        train_data.iloc[valid_index].copy(),
+    )
+
+    size = df.shape[0]
+    logger.info("Train, validation, and test fractions:")
+    logger.info(
+        f"{train_data.shape[0]/size}, {valid_data.shape[0]/size}, {test_data.shape[0]/size}"
+    )
+    data = {"train": train_data, "val": valid_data, "test": test_data}
 
     return data
 
@@ -105,20 +165,38 @@ def load_ptype_data_subset(
     return data
 
 
-def load_ptype_data_day(conf, data_split=0, verbose=0):
+def load_ptype_data_day(conf, data_split=0, verbose=0, drop_mixed=False):
 
-    if not os.path.isfile(os.path.join(conf["data_path"], "cached.parquet")):
+    if "parquet" in conf["data_path"]:
+        df = pd.read_parquet(conf["data_path"])
+        # cond1 = (df["datetime"].apply(lambda x: str(x).split(" ")[0]) < "2020-07-01")
+        # cond2 = (df[["usa", "wetbulb5.0_filter"]].sum(axis = 1) > 0.0)
+        cond2 = df["wetbulb5.0_filter"] == 0.0
+        cond3 = df["usa"] == 1.0
+        df = df[cond2 & cond3].copy()
+        print(df.shape)
+
+    elif not os.path.isfile(os.path.join(conf["data_path"], "cached.parquet")):
         df = pd.concat(
             [
                 pd.read_parquet(x)
-                for x in tqdm(
-                    glob.glob(os.path.join(conf["data_path"], "*.parquet"))
-                )
+                for x in tqdm(glob.glob(os.path.join(conf["data_path"], "*.parquet")))
             ]
         )
         df.to_parquet(os.path.join(conf["data_path"], "cached.parquet"))
+
     else:
         df = pd.read_parquet(os.path.join(conf["data_path"], "cached.parquet"))
+
+    # Drop mixed cases
+    if drop_mixed:
+        logger.info("Dropping data points with mixed observations")
+        c1 = df["ra_percent"] == 1.0
+        c2 = df["sn_percent"] == 1.0
+        c3 = df["pl_percent"] == 1.0
+        c4 = df["fzra_percent"] == 1.0
+        condition = c1 | c2 | c3 | c4
+        df = df[condition].copy()
 
     # Split and preprocess the data
     df["day"] = df["datetime"].apply(lambda x: str(x).split(" ")[0])
@@ -173,6 +251,7 @@ def preprocess_data(
     scaler_type="standard",
     encoder_type="onehot",
     groups=[],
+    seed=1000,
 ):
     """
     Function to select features and scale data for ML
@@ -189,17 +268,26 @@ def preprocess_data(
     groupby = len(groups)
 
     scalar_obs = {
-        "minmax": MinMaxScaler if not groupby else GroupMinMaxScaler,
-        "standard": StandardScaler if not groupby else GroupStandardScaler,
-        "robust": RobustScaler if not groupby else GroupRobustScaler,
+        "normalize": MinMaxScaler() if not groupby else GroupMinMaxScaler(),
+        "symmetric": MinMaxScaler((-1, 1))
+        if not groupby
+        else GroupMinMaxScaler((-1, 1)),
+        "standard": StandardScaler() if not groupby else GroupStandardScaler(),
+        "robust": RobustScaler() if not groupby else GroupRobustScaler(),
+        "quantile": QuantileTransformer(
+            n_quantiles=1000, random_state=seed, output_distribution="normal"
+        ),
+        "quantile-uniform": QuantileTransformer(
+            n_quantiles=1000, random_state=seed, output_distribution="uniform"
+        ),
     }
     scalers, scaled_data = {}, {}
-    scalers["input"] = scalar_obs[scaler_type]()
+    scalers["input"] = scalar_obs[scaler_type]
     scalers["output_label"] = LabelEncoder()
     if encoder_type == "onehot":
         scalers["output_onehot"] = OneHotEncoder(sparse=False)
 
-    if groupby:
+    if groupby and "quantile" not in scaler_type:
         scaled_data["train_x"] = pd.DataFrame(
             scalers["input"].fit_transform(
                 data["train"][input_features], groups=groups
@@ -219,8 +307,9 @@ def preprocess_data(
     )
     if "left_overs" in data:
         scaled_data["left_overs_x"] = pd.DataFrame(
-        scalers["input"].transform(data["left_overs"][input_features]), columns=input_features
-    )
+            scalers["input"].transform(data["left_overs"][input_features]),
+            columns=input_features,
+        )
 
     scalers["output_label"] = LabelEncoder()
     scaled_data["train_y"] = scalers["output_label"].fit_transform(
@@ -252,7 +341,7 @@ def preprocess_data(
             scaled_data["left_overs_y"] = scalers["output_onehot"].transform(
                 np.expand_dims(scaled_data["left_overs_y"], 1)
             )
-        
+
     return scaled_data, scalers
 
 
