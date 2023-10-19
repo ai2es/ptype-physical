@@ -17,12 +17,10 @@ from argparse import ArgumentParser
 
 from ptype.callbacks import MetricsCallback    
 from ptype.data import load_ptype_uq, preprocess_data
-from mlguess.keras.callbacks import get_callbacks, ReportEpoch
+from mlguess.keras.callbacks import get_callbacks
 from mlguess.keras.models import CategoricalDNN
 from mlguess.pbs import launch_pbs_jobs
 from bridgescaler import save_scaler
-
-from sklearn.model_selection import GroupShuffleSplit
 
 
 warnings.filterwarnings("ignore")

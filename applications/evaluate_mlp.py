@@ -7,7 +7,6 @@ from argparse import ArgumentParser
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import tensorflow as tf
 from sklearn.metrics import precision_recall_fscore_support
 
 from mlguess.keras.models import CategoricalDNN
@@ -18,16 +17,11 @@ from ptype.reliability import (
 )
 from ptype.plotting import (
     plot_confusion_matrix,
-    coverage_figures,
-    labels_video,
-    video,
+    coverage_figures
 )
-from ptype.data import load_ptype_uq, load_ptype_data_day, preprocess_data
-from evml.keras.models import calc_prob_uncertainty
-
+from ptype.data import load_ptype_uq, preprocess_data
 from hagelslag.evaluation.ProbabilityMetrics import DistributedROC
 from hagelslag.evaluation.MetricPlotter import roc_curve, performance_diagram
-
 from collections import OrderedDict, defaultdict
 
 
@@ -37,7 +31,7 @@ warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)
 
 
-def evaluate(conf, reevaluate=False, data_split=0):
+def evaluate(conf, reevaluate=False, data_split=0, mc_forward_passes=0):
     input_features = []
     for features in conf["input_features"]:
         input_features += conf[features]
@@ -68,6 +62,11 @@ def evaluate(conf, reevaluate=False, data_split=0):
                 u = u.numpy()
                 ale = ale.numpy()
                 epi = epi.numpy()
+            elif mc_forward_passes > 0:
+                pred_probs = mlp.predict(x)
+                _, ale, epi, entropy, mutual_info = mlp.predict_monte_carlo(
+                    x, mc_forward_passes=mc_forward_passes
+                )
             else:
                 pred_probs = mlp.predict(x)
             true_labels = np.argmax(data[name][output_features].to_numpy(), 1)
@@ -292,6 +291,7 @@ def evaluate(conf, reevaluate=False, data_split=0):
     #                 )
     #
 
+
 if __name__ == "__main__":
 
     description = "Usage: python evaluate_mlp.py -c model.yml"
@@ -303,10 +303,18 @@ if __name__ == "__main__":
         default=False,
         help="Path to the model configuration (yml) containing your inputs.",
     )
+    parser.add_argument(
+        "-s",
+        dest="steps",
+        type=int,
+        default=0,
+        help="Set steps > 0 to create an ensemble using MC-dropout.",
+    )
 
     args_dict = vars(parser.parse_args())
     config_file = args_dict.pop("model_config")
-
+    mc_forward_passes = args_dict.pop("steps")
+    
     with open(config_file) as cf:
         conf = yaml.load(cf, Loader=yaml.FullLoader)
 
@@ -321,4 +329,4 @@ if __name__ == "__main__":
         with open(os.path.join(save_loc, "model.yml"), "w") as fid:
             yaml.dump(conf, fid)
 
-    evaluate(conf)
+    evaluate(conf, mc_forward_passes=mc_forward_passes)
