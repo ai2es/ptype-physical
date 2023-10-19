@@ -1,3 +1,7 @@
+import warnings
+warnings.filterwarnings("always")
+
+
 import os
 import gc
 import sys
@@ -9,13 +13,12 @@ import subprocess
 import numpy as np
 import pandas as pd
 
-from ptype.callbacks import get_callbacks, MetricsCallback
-from ptype.models import DenseNeuralNetwork
+from ptype.callbacks import MetricsCallback
 from pathlib import Path
-from ptype.data import load_ptype_uq, load_ptype_data_day, preprocess_data
+from ptype.data import load_ptype_uq, preprocess_data
 
-from evml.keras.callbacks import ReportEpoch
-from evml.keras.models import calc_prob_uncertainty
+from mlguess.keras.callbacks import get_callbacks
+from mlguess.keras.models import CategoricalDNN
 
 from collections import defaultdict
 from argparse import ArgumentParser
@@ -25,20 +28,20 @@ from sklearn.metrics import precision_recall_fscore_support
 
 import tensorflow as tf
 
-import warnings
-
-warnings.filterwarnings("always")
 pd.options.mode.chained_assignment = None
+
+#tf.config.run_functions_eagerly(True)
 
 
 def train(conf, data, mc_forward_passes=0):
-    if conf["model"]["loss"] == "dirichlet":
+    input_features = []
+    for features in conf["input_features"]:
+        input_features += conf[features]
+    if conf["model"]["loss"] == "evidential":
         evidential_model = True
     else:
         evidential_model = False
     callbacks = []
-    if evidential_model:
-        callbacks.append(ReportEpoch(conf["model"]["annealing_coeff"]))
     callbacks.append(
         MetricsCallback(
             data["val_x"],
@@ -47,26 +50,27 @@ def train(conf, data, mc_forward_passes=0):
             use_uncertainty=evidential_model,
         )
     )
-    callbacks += get_callbacks(conf)
-    mlp = DenseNeuralNetwork(**conf["model"], callbacks=callbacks)
-    history = mlp.fit(
-        data["train_x"], data["train_y"], validation_data=(data["val_x"], data["val_y"])
-    )
+    callbacks += get_callbacks(conf, path_extend="models")
+    # initialize the model
+    mlp = CategoricalDNN(**conf["model"], callbacks=callbacks)
+    
+    # train the model
+    history = mlp.fit(data["train_x"], data["train_y"])
+
     # Evaluate
     results_dict = defaultdict(dict)
     relevant_keys = set([k.strip("_y") for k in data.keys() if "_y" in k])
     for name in relevant_keys:
         x = data[f"{name}_x"]
         if evidential_model:  # Compute uncertainties
-            pred_probs = mlp.predict(x)
-            pred_probs, u, ale, epi = calc_prob_uncertainty(pred_probs)
+            pred_probs, u, ale, epi = mlp.predict_uncertainty(x)
             pred_probs = pred_probs.numpy()
             u = u.numpy()
             ale = ale.numpy()
             epi = epi.numpy()
         elif mc_forward_passes > 0:  # Compute epistemic uncertainty with MC dropout
             pred_probs = mlp.predict(x)
-            _, epi, entropy, mutual_info = mlp.predict_dropout(
+            _, ale, epi, entropy, mutual_info = mlp.predict_dropout(
                 x, mc_forward_passes=mc_forward_passes
             )
         else:  # Predict probabilities only when the random policy is being used
@@ -136,7 +140,7 @@ def launch_pbs_jobs(
         #PBS -e {os.path.join(save_path, "out")}
 
         source ~/.bashrc
-        conda activate ptype
+        conda activate guess-casper
         python {script_path} -c {config} -p {policy} -i {iterations} -s {mc_steps} -n {nodes} -w {worker}
         """
         with open("launcher.sh", "w") as fid:
@@ -169,7 +173,7 @@ if __name__ == "__main__":
         dest="policy",
         type=str,
         default="evidential",
-        help="The active training policy to be used",
+        help="The active training policy to be used. Choose from (mc-dropout, entropy, mutual-info), evidential, or random",
     )
     parser.add_argument(
         "-s",
@@ -254,9 +258,11 @@ if __name__ == "__main__":
     save_loc = conf["save_loc"]
     seed = conf["seed"]
     os.makedirs(save_loc, exist_ok=True)
-    os.makedirs(os.path.join(save_loc, "training_logs"), exist_ok = True)
-    os.makedirs(os.path.join(save_loc, "active_logs"), exist_ok = True)
-    os.makedirs(os.path.join(save_loc, "data_logs"), exist_ok = True)
+    os.makedirs(os.path.join(save_loc, "training_logs"), exist_ok=True)
+    os.makedirs(os.path.join(save_loc, "active_logs"), exist_ok=True)
+    os.makedirs(os.path.join(save_loc, "data_logs"), exist_ok=True)
+    os.makedirs(os.path.join(save_loc, "models"), exist_ok=True)
+    #os.makedirs(os.path.join(save_loc, "evaluate"), exist_ok=True)
 
     if not os.path.isfile(os.path.join(save_loc, "model.yml")):
         shutil.copyfile(config_file, os.path.join(save_loc, "model.yml"))
@@ -282,10 +288,10 @@ if __name__ == "__main__":
 
     # seed_everything(seed)
     # Load the data
-    input_features = (
-        conf["TEMP_C"] + conf["T_DEWPOINT_C"] + conf["UGRD_m/s"] + conf["VGRD_m/s"]
-    )
-    output_features = conf["ptypes"]
+    input_features = []
+    for features in conf["input_features"]:
+        input_features += conf[features]
+    output_features = conf["output_features"]
     metric = conf["metric"]
     data = load_ptype_uq(conf, data_split=0, verbose=1)
     data["train"] = pd.concat([data["train"], data["val"]])
@@ -309,7 +315,7 @@ if __name__ == "__main__":
 
     # set up data splits / iteration loops
     num_selected = int((1.0 / num_iterations) * data["train"].shape[0])
-    data_splits = list(range(conf["n_splits"]))
+    data_splits = list(range(conf["ensemble"]["n_splits"]))
     if nodes > 1:
         data_splits = np.array_split(data_splits, nodes)[worker]
 
@@ -360,8 +366,8 @@ if __name__ == "__main__":
                     
             # Split the available training data into train/validation split
             splitter = GroupShuffleSplit(
-                n_splits=conf["n_splits"],
-                train_size=conf["train_size2"],
+                n_splits=conf["ensemble"]["n_splits"],
+                train_size=conf["train_size1"],
                 random_state=seed,
             )
             this_train_idx, this_valid_idx = list(
