@@ -145,7 +145,7 @@ def evaluate(conf, reevaluate=False, data_split=0, mc_forward_passes=0):
     plot_confusion_matrix(
         data,
         labels,
-        normalize="true",
+        normalize=True,
         save_location=os.path.join(save_loc, "plots", "confusion_matrices.pdf"),
     )
 

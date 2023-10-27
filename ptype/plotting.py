@@ -131,17 +131,17 @@ def plot_scatter(
 
 
 def plot_confusion_matrix(
-    data, classes, font_size=10, normalize=None, axis=1, cmap=plt.cm.Blues, save_location=None
+    data, classes, font_size=10, normalize=False, axis=1, cmap=plt.cm.Blues, save_location=None
 ):
     """
     Function to plot a confusion matrix using seaborn heatmap
 
-    data: dictonary, generally has test, validate, and training data
+    data: dictionary, generally has test, validate, and training data
     classes: different p-types to be tested, list
-    normalize: if you want the confusion matrix to be normalized or not. Needs to be None or 'true'
+    normalize: if you want the confusion matrix to be normalized or not. Needs to be True or False.
     """
-    if not type(data) is dict:
-        raise TypeError("Data neets to be a dictionary")
+    if not isinstance(data, dict):
+        raise TypeError("Data needs to be a dictionary")
 
     fig, axs = plt.subplots(
         nrows=1, ncols=len(data), figsize=(10, 3.5), sharex="col", sharey="row"
@@ -149,9 +149,13 @@ def plot_confusion_matrix(
 
     for i, (key, ds) in enumerate(data.items()):
         ax = axs[i]
-        cm = confusion_matrix(ds["true_label"], ds["pred_label"], normalize=normalize)
+        if normalize:
+            norm = 'true'
+        else:
+            norm = None
+        cm = confusion_matrix(ds["true_label"], ds["pred_label"], normalize=norm)
 
-        if normalize == 'true':    
+        if normalize:    
             sns.heatmap(cm,
                 annot=True,
                 xticklabels=classes,
@@ -161,7 +165,7 @@ def plot_confusion_matrix(
                 vmax=1,
                 fmt='.2f',         
                 ax=ax)
-        elif normalize == None:
+        else:
             sns.heatmap(cm,
                 annot=True,
                 xticklabels=classes,
@@ -180,6 +184,7 @@ def plot_confusion_matrix(
     plt.tight_layout()
     if save_location:
         plt.savefig(save_location, dpi=300, bbox_inches="tight")
+
 
 
 def compute_cov(df, col="pred_conf", quan="uncertainty", ascending=False):
