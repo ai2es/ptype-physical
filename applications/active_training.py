@@ -119,6 +119,7 @@ def launch_pbs_jobs(
     cpus=8,
     mem=128,
     walltime="12:00:00",
+    env="ptype"
 ):
 
     script_path = Path(__file__).absolute()
@@ -140,7 +141,7 @@ def launch_pbs_jobs(
         #PBS -e {os.path.join(save_path, "out")}
 
         source ~/.bashrc
-        conda activate guess-casper
+        conda activate {env}
         python {script_path} -c {config} -p {policy} -i {iterations} -s {mc_steps} -n {nodes} -w {worker}
         """
         with open("launcher.sh", "w") as fid:

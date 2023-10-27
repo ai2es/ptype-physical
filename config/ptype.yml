@@ -183,3 +183,18 @@ case_studies:
         '2016-12-19',
         '2016-12-20'
      ]
+     
+pbs:
+  account: NAML0001
+  env_setup: "source ~/.bashrc \nmodule unload cuda cudnn \nconda activate evidential\n\
+    CUDNN_PATH=$(dirname $(python -c \"import nvidia.cudnn;print(nvidia.cudnn.__file__)\"\
+    ))\nexport LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$CONDA_PREFIX/lib/:$CUDNN_PATH/lib\n\
+    export XLA_FLAGS=--xla_gpu_cuda_data_dir=$CONDA_PREFIX"
+  gpu_type: v100
+  mem: 128GB
+  name: ptype-ev
+  ncpus: 8
+  ngpus: 1
+  queue: casper
+  select: 1
+  walltime: 43200
