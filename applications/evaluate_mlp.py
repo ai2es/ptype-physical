@@ -7,9 +7,9 @@ from argparse import ArgumentParser
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import tensorflow as tf
 from sklearn.metrics import precision_recall_fscore_support
 
+from mlguess.keras.models import CategoricalDNN
 from ptype.reliability import (
     compute_calibration,
     reliability_diagram,
@@ -17,16 +17,11 @@ from ptype.reliability import (
 )
 from ptype.plotting import (
     plot_confusion_matrix,
-    coverage_figures,
-    labels_video,
-    video,
+    coverage_figures
 )
-from ptype.data import load_ptype_uq, load_ptype_data_day, preprocess_data
-from evml.keras.models import calc_prob_uncertainty
-
+from ptype.data import load_ptype_uq, preprocess_data
 from hagelslag.evaluation.ProbabilityMetrics import DistributedROC
 from hagelslag.evaluation.MetricPlotter import roc_curve, performance_diagram
-
 from collections import OrderedDict, defaultdict
 
 
@@ -36,21 +31,21 @@ warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)
 
 
-def evaluate(conf, reevaluate=False):
-    input_features = (
-        conf["TEMP_C"] + conf["T_DEWPOINT_C"] + conf["UGRD_m/s"] + conf["VGRD_m/s"]
-    )
-    output_features = conf["ptypes"]
+def evaluate(conf, reevaluate=False, data_split=0, mc_forward_passes=0):
+    input_features = []
+    for features in conf["input_features"]:
+        input_features += conf[features]
+    output_features = conf["output_features"]
     save_loc = conf["save_loc"]
     labels = ["rain", "snow", "sleet", "frz-rain"]
     sym_colors = ["blue", "grey", "red", "purple"]
     symbols = ["s", "o", "v", "^"]
     if reevaluate:
-        if conf["model"]["loss"] == "dirichlet":
+        if conf["model"]["loss"] == "evidential":
             use_uncertainty = True
         else:
             use_uncertainty = False
-        data = load_ptype_uq(conf, data_split=0, verbose=1)
+        data = load_ptype_uq(conf, data_split=data_split, verbose=1)
         scaled_data, scalers = preprocess_data(
             data,
             input_features,
@@ -58,22 +53,29 @@ def evaluate(conf, reevaluate=False):
             scaler_type="standard",
             encoder_type="onehot",
         )
-        mlp = tf.keras.models.load_model(os.path.join(save_loc, "model"), compile=False)
+        mlp = CategoricalDNN.load_model(conf)
         for name in data.keys():
             x = scaled_data[f"{name}_x"]
-            pred_probs = mlp.predict(x)
             if use_uncertainty:
-                pred_probs, u, ale, epi = calc_prob_uncertainty(pred_probs)
+                pred_probs, u, ale, epi = mlp.predict_uncertainty(x)
                 pred_probs = pred_probs.numpy()
                 u = u.numpy()
                 ale = ale.numpy()
                 epi = epi.numpy()
+            elif mc_forward_passes > 0:
+                pred_probs = mlp.predict(x)
+                _, ale, epi, entropy, mutual_info = mlp.predict_monte_carlo(
+                    x, mc_forward_passes=mc_forward_passes
+                )
+            else:
+                pred_probs = mlp.predict(x)
             true_labels = np.argmax(data[name][output_features].to_numpy(), 1)
             pred_labels = np.argmax(pred_probs, 1)
             confidences = np.take_along_axis(pred_probs, pred_labels[:, None], axis=1)
             data[name]["true_label"] = true_labels
             data[name]["pred_label"] = pred_labels
             data[name]["pred_conf"] = confidences
+            
             for k in range(pred_probs.shape[-1]):
                 data[name][f"pred_conf{k+1}"] = pred_probs[:, k]
             if use_uncertainty:
@@ -84,12 +86,43 @@ def evaluate(conf, reevaluate=False):
                 data[name]["epistemic"] = np.take_along_axis(
                     epi, pred_labels[:, None], axis=1
                 )
-            data[name].to_parquet(os.path.join(save_loc, f"{name}.parquet"))
+                for k in range(pred_probs.shape[-1]):
+                    data[name][f"aleatoric{k+1}"] = ale[:, k]
+                    data[name][f"epistemic{k+1}"] = epi[:, k]
+            elif mc_forward_passes > 0:
+                data[name]["aleatoric"] = np.take_along_axis(
+                    ale, pred_labels[:, None], axis=1
+                )
+                data[name]["epistemic"] = np.take_along_axis(
+                    epi, pred_labels[:, None], axis=1
+                )
+                for k in range(pred_probs.shape[-1]):
+                    data[name][f"aleatoric{k+1}"] = ale[:, k]
+                    data[name][f"epistemic{k+1}"] = epi[:, k]
+                data[name]["entropy"] = entropy
+                data[name]["mutual_info"] = mutual_info
+
+            if conf["ensemble"]["n_splits"] == 1:
+                data[name].to_parquet(
+                    os.path.join(conf["save_loc"], f"evaluate/{name}.parquet")
+                )
+            else:
+                data[name].to_parquet(
+                    os.path.join(
+                        conf["save_loc"], f"evaluate/{name}_{data_split}.parquet"
+                    )
+                )
     else:
-        data = {
-            name: pd.read_parquet(os.path.join(save_loc, f"{name}.parquet"))
-            for name in ["train", "val", "test"]
-        }
+        if conf["ensemble"]["n_splits"] == 1:
+            data = {
+                name: pd.read_parquet(os.path.join(save_loc, f"evaluate/{name}.parquet"))
+                for name in ["train", "val", "test"]
+            }
+        else:
+            data = {
+                name: pd.read_parquet(os.path.join(save_loc, f"evaluate/{name}_{data_split}.parquet"))
+                for name in ["train", "val", "test"]
+            }
 
     # Compute categorical metrics
     metrics = defaultdict(list)
@@ -163,7 +196,7 @@ def evaluate(conf, reevaluate=False):
                 metrics[f"{output_features[label]}_{key}"].append(
                     results_calibration[key]
                 )
-
+                
         _ = reliability_diagrams(
             results,
             num_bins=10,
@@ -258,6 +291,7 @@ def evaluate(conf, reevaluate=False):
     #                 )
     #
 
+
 if __name__ == "__main__":
 
     description = "Usage: python evaluate_mlp.py -c model.yml"
@@ -269,10 +303,18 @@ if __name__ == "__main__":
         default=False,
         help="Path to the model configuration (yml) containing your inputs.",
     )
+    parser.add_argument(
+        "-s",
+        dest="steps",
+        type=int,
+        default=0,
+        help="Set steps > 0 to create an ensemble using MC-dropout.",
+    )
 
     args_dict = vars(parser.parse_args())
     config_file = args_dict.pop("model_config")
-
+    mc_forward_passes = args_dict.pop("steps")
+    
     with open(config_file) as cf:
         conf = yaml.load(cf, Loader=yaml.FullLoader)
 
@@ -287,4 +329,4 @@ if __name__ == "__main__":
         with open(os.path.join(save_loc, "model.yml"), "w") as fid:
             yaml.dump(conf, fid)
 
-    evaluate(conf)
+    evaluate(conf, mc_forward_passes=mc_forward_passes)
