@@ -5,7 +5,7 @@ input_scaler_file: "input.json"
 out_path: "/glade/work/username/ptype_real_time/2023-11-17/"
 drop_input_data: False
 add_interp_data: True
-n_processors: 20      # Only used if use_dask=False (dask has its own parameters at bottom of config)
+n_processors: 18      # Only used if use_dask=False (dask has its own parameters at bottom of config)
 use_dask: False
 save_format: "netcdf"   # Supports "zarr" and "netcdf"
 extent: [-115, -110, 32, 35]  # [min_lon, max_lon, min_lat, max_lat] or "full"
