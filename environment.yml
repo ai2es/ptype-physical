@@ -38,7 +38,6 @@ dependencies:
   - ca-certificates
   - certifi
   - openssl
-  - wrf-python
   - xhistogram
   - black
   - pip:
@@ -50,6 +49,7 @@ dependencies:
     - imblearn
     - git+https://github.com/NCAR/echo-opt
     - git+https://github.com/ai2es/evidential.git
+    - git+https://github.com/ai2es/miles-guess.git
     - bridgescaler
     - zarr
     - .
