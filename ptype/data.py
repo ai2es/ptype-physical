@@ -271,7 +271,7 @@ def preprocess_data(
         "normalize": MinMaxScaler() if not groupby else GroupMinMaxScaler(),
         "symmetric": MinMaxScaler((-1, 1))
         if not groupby
-        else GroupMinMaxScaler((-1, 1)),
+        else GroupMinMaxScaler(),
         "standard": StandardScaler() if not groupby else GroupStandardScaler(),
         "robust": RobustScaler() if not groupby else GroupRobustScaler(),
         "quantile": QuantileTransformer(

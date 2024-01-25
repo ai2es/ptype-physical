@@ -1,5 +1,5 @@
 import pandas as pd
-from herbie import Herbie
+from herbie import Herbie, Herbie_latest
 from metpy.units import units
 from metpy.calc import dewpoint_from_relative_humidity, dewpoint_from_specific_humidity
 import numpy as np
@@ -7,7 +7,7 @@ import xarray as xr
 import cfgrib
 import os
 from bridgescaler import load_scaler
-from evml.keras.models import CategoricalDNN
+from mlguess.keras.models import CategoricalDNN
 import yaml
 import numba
 from numba import jit
@@ -55,12 +55,17 @@ def download_data(date, model, product, save_dir, forecast_hour):
     Returns:
         None
     """
-
-    h = Herbie(date=date,
-               model=model,
-               product=product,
-               save_dir=save_dir,
-               fxx=forecast_hour)
+    if date == "most_recent":
+        h = Herbie_latest(model=model,
+                          product=product,
+                          save_dir=save_dir,
+                          fxx=[forecast_hour])
+    else:
+        h = Herbie(date=date,
+                   model=model,
+                   product=product,
+                   save_dir=save_dir,
+                   fxx=forecast_hour)
     h.download()
 
     return h.get_localFilePath()
@@ -87,9 +92,9 @@ def load_data(var_dict, file, model, extent, drop):
         for var in value:
             grib = cfgrib.open_dataset(file, backend_kwargs={
                 "filter_by_keys": {'typeOfLevel': key, 'cfVarName': var, 'stepType': 'instant'}})
-            #if len(grib) == 0:
-            #    grib = cfgrib.open_dataset(file, backend_kwargs={
-            #        "filter_by_keys": {'typeOfLevel': key, 'shortName': var, 'stepType': 'instant'}})
+            if len(grib) == 0:
+               grib = cfgrib.open_dataset(file, backend_kwargs={
+                   "filter_by_keys": {'typeOfLevel': key, 'shortName': var, 'stepType': 'instant'}})
             if "heightAboveGround" in grib.variables.keys():
                 grib = grib.drop_vars("heightAboveGround")
             grib_data.append(grib)
@@ -124,7 +129,6 @@ def load_data(var_dict, file, model, extent, drop):
     #nwp_dataset = add_coord_data(file, nwp_dataset, extent)
 
     flattened_df = df_flatten(nwp_dataset, ['t', 'dpt', 'u', 'v', 'hgt_above_sfc'])
-
     surface_vars = {x: nwp_dataset[x].values.flatten() for x in var_dict["heightAboveGround"] + var_dict["surface"]}
     surface_vars['t2m'] = kelvin_to_celsius(surface_vars['t2m'])
     surface_vars['d2m'] = kelvin_to_celsius(surface_vars['d2m'])
@@ -179,7 +183,6 @@ def subset_extent(nwp_data, extent, data_proj=None):
         else:
             subset = nwp_data.sel(longitude=slice(convert_longitude(lon_min), convert_longitude(lon_max)),
                                   latitude=slice(lat_max, lat_min))  # GFS orders latitude in descending values :/
-            print(subset)
         return subset
 
 
@@ -204,7 +207,6 @@ def add_coord_data(file_path, grib_data, extent):
         data_proj = Proj(proj_params)
         #transformer = Transformer.from_crs(CRS({"proj": "eqc"}), CRS(proj_params))
         #x_proj_coord, y_proj_coord = transformer.transform(grib_data['longitude'], grib_data['latitude'])
-        print(grib_data.variables.keys())
         x_proj_coord, y_proj_coord = data_proj(grib_data["longitude"].values, grib_data["latitude"].values)
         grib_data["y_projection_coordinate"] = ('y', y_proj_coord[:, 0])
         grib_data["x_projection_coordinate"] = ('x', x_proj_coord[0, :])
@@ -274,7 +276,7 @@ def interpolate(x, y, height_levels):
                            fp=y[i])
     return arr
 
-def transform_data(input_data, transformer):
+def transform_data(input_data, transformer, input_features):
     """
     Transform data for input into ML model.
     Args:
@@ -284,14 +286,14 @@ def transform_data(input_data, transformer):
     Returns:
         Pandas dataframe of transformed input.
     """
-    transformed_data = transformer.transform(input_data)
+    transformed_data = transformer.transform(pd.DataFrame(input_data, columns=input_features))
 
     return transformed_data
 
 
 
 
-def load_model(model_path, model_file, input_scaler_file, output_scaler_file):
+def load_model(model_path, input_scaler_file):
     """
     Load ML model and bridgescaler object.
     Args:
@@ -310,11 +312,15 @@ def load_model(model_path, model_file, input_scaler_file, output_scaler_file):
     with open(os.path.join(model_path, "model.yml")) as f:
         conf = yaml.safe_load(f)
 
+    conf["input_features"] = conf["TEMP_C"] + conf["T_DEWPOINT_C"] + conf["UGRD_m/s"] + conf["VGRD_m/s"]
+    conf["output_features"] = conf["ptypes"]
+
     model = CategoricalDNN().load_model(conf)
 
-    return model, x_transformer
+    return model, x_transformer, conf["input_features"]
 
-def grid_predictions(data, preds, interp_df=None, interpolated_pl=None, height_levels=None, add_interp_data=False):
+def grid_predictions(data, predictions, interp_df=None, interpolated_pl=None, height_levels=None,
+                     add_interp_data=False, evidential=False):
     """
     Populate gridded xarray dataset with ML probabilities and categorical predictions as separate variables.
     Args:
@@ -324,8 +330,25 @@ def grid_predictions(data, preds, interp_df=None, interpolated_pl=None, height_l
     Returns:
         Xarray dataset of ML predictions and surface variables on model grid.
     """
-    ptype = preds.argmax(axis=1).reshape(-1, 1)
-    preds = np.hstack([preds, ptype])
+    if evidential:
+
+        probabilities = predictions[0].numpy()
+        ptype = probabilities.argmax(axis=1).reshape(-1, 1)
+        u = predictions[1].numpy().reshape(data['y'].size, data['x'].size)
+        data['ML_u'] = (['y', 'x'], u.astype('float32'))
+        data[f"ML_u"].attrs = {"Description": f"Evidential Uncertainty (Dempster-Shafer Theory)"}
+        ale = predictions[2].numpy().reshape(data['y'].size, data['x'].size, probabilities.shape[-1])
+        epi = predictions[3].numpy().reshape(data['y'].size, data['x'].size, probabilities.shape[-1])
+        for i, (var, v) in enumerate(zip(["Rain", "Snow", "Ice Pellets", "Freezing Rain"],
+                                         ["rain", "snow", "icep", "frzr"])):
+            for uncertainty_type, long_name, short_name in zip([ale, epi], ["aleatoric", "epistemic"], ["ale", "epi"]):
+                data[f"ML_{v}_{short_name}"] = (['y', 'x'], uncertainty_type[:, :, i].astype('float32'))
+                data[f"ML_{v}_{short_name}"].attrs = {"Description": f"Machine Learned {long_name}u ncertainty of {var}"}
+    else:
+        ptype = predictions.argmax(axis=1).reshape(-1, 1)
+        probabilities = predictions
+
+    preds = np.hstack([probabilities, ptype])
     reshaped_preds = preds.reshape(data['y'].size, data['x'].size, preds.shape[-1])
     for i, (long_v, v) in enumerate(zip(
             ['rain', 'snow', 'ice pellets', 'freezing rain'], ['rain', 'snow', 'icep', 'frzr'])):
@@ -333,6 +356,7 @@ def grid_predictions(data, preds, interp_df=None, interpolated_pl=None, height_l
         data[f"ML_{v}"].attrs = {"Description": f"Machine Learned Probability of {long_v}"}
         data[f"ML_c{v}"] = (['y', 'x'], np.where(reshaped_preds[:, :, -1] == i, 1, 0).astype('uint8'))  # ML categorical
         data[f"ML_c{v}"].attrs = {"Description": f"Machine Learned Categorical {long_v}"}
+
 
     for var in ["crain", "csnow", "cicep", "cfrzr"]:
         if var in list(data.data_vars):
@@ -375,12 +399,12 @@ def save_data(dataset, out_path, date, model, forecast_hour, save_format):
     Returns:
         None
     """
-    date_str = date.strftime("%Y-%m-%d")
-    dir_str = date.strftime("%Y%m%d")
-    model_run_str = date.strftime("%H%M")
-    os.makedirs(os.path.join(out_path, model, dir_str, model_run_str), exist_ok=True)
+    date_str = dataset.time.dt.strftime("%Y-%m-%d").values
+    dir_str = dataset.time.dt.strftime("%Y%m%d").values
+    model_run_str = dataset.time.dt.strftime("%H%M").values
+    os.makedirs(os.path.join(out_path, model, str(dir_str), str(model_run_str)), exist_ok=True)
     file_str = f"MILES_ptype_{model}_{date_str}_{model_run_str}_f{forecast_hour:02}"
-    full_path = os.path.join(out_path, model, dir_str, model_run_str, file_str)
+    full_path = os.path.join(out_path, model, str(dir_str), str(model_run_str), file_str)
 
     dataset = dataset.expand_dims('time')
 

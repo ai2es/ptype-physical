@@ -1,40 +1,41 @@
 seed: 1000
 verbose: 0
-save_loc: "" #"/glade/p/cisl/aiml/ai2es/winter_ptypes/models/classifier_weighted" 
+save_loc: "/glade/u/home/schreck/schreck/repos/ptype/ptype-physical/results/active_evidential" #"/glade/p/cisl/aiml/ai2es/winter_ptypes/models/classifier_weighted" 
 asos_path: '/glade/p/cisl/aiml/ai2es/winter_ptypes/precip_rap/ASOS_mixture/'
 mping_path: '/glade/p/cisl/aiml/ai2es/winter_ptypes/precip_rap/mPING_mixture/'
 data_path: '/glade/p/cisl/aiml/ai2es/winter_ptypes/ptype_qc/mPING_interpolated_QC2.parquet'
-train_size1: 0.9 # When used with cutoff 2020-07-01 gives about 60/40 train/test split
+train_size1: 0.9
 train_size2: 0.0
 qc: 3.0 # 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0
 test_cutoff: "2020-07-01"
-ptypes: ['ra_percent', 'sn_percent', 'pl_percent', 'fzra_percent']
+
 metric: "val_ave_acc"
 direction: "max"
 
 ensemble:
-    n_splits: 1
+    n_splits: 20
     mc_steps: 0
 
 model:
-    hidden_layers: 11
-    hidden_neurons: 541
+    activation: leaky
+    annealing_coeff: 34.593686950910275
+    balanced_classes: 0
+    batch_size: 3097
+    dropout_alpha: 0.31256692323263807
+    epochs: 200
+    hidden_layers: 3
+    hidden_neurons: 200
+    loss: evidential
+    lr: 0.0004035503144482269
+    optimizer: adam
+    output_activation: linear
     use_dropout: 1
-    dropout_alpha: 0.217191294429198
-    batch_size: 1289
-    lr: 0.0008707816746166255
-    activation: "elu"
-    output_activation: "linear" #"softmax"
-    optimizer: "adam"
-    loss: "dirichlet" #"categorical_crossentropy"
-    annealing_coeff: 50
-    loss_weights: [92.96912671890074, 41.743749696615055, 12.99938921008767, 5.018459330108088] #[0.37939381, 0.96543804, 35.0, 15.0]
-    balanced_classes: 1
-    l2_weight: 0.002338643108375605
-    epochs: 1000
     verbose: 0
-    
-scaler_type: "quantile" # standard, robust, minmax, quantile, quantile-uniform
+  
+input_features: ["TEMP_C", "T_DEWPOINT_C", "UGRD_m/s", "VGRD_m/s"]
+output_features: ['ra_percent', 'sn_percent', 'pl_percent', 'fzra_percent']
+
+scaler_type: "quantile-uniform" # standard, robust, minmax, quantile, quantile-uniform
 scale_groups: ["TEMP_C", "T_DEWPOINT_C", "UGRD_m/s", "VGRD_m/s"]
 TEMP_C: [
     'TEMP_C_0_m',
@@ -150,13 +151,6 @@ callbacks:
         filename: "training_log.csv"
         separator: ","
         append: 0
-#     ModelCheckpoint:
-#         filepath: "best"
-#         monitor: "val_f1"
-#         #save_weights: 1
-#         save_best_only: 1
-#         mode: "max"
-#         verbose: 0
     
 case_studies: 
     texas: [
@@ -189,3 +183,18 @@ case_studies:
         '2016-12-19',
         '2016-12-20'
      ]
+     
+pbs:
+  account: NAML0001
+  env_setup: "source ~/.bashrc \nmodule unload cuda cudnn \nconda activate evidential\n\
+    CUDNN_PATH=$(dirname $(python -c \"import nvidia.cudnn;print(nvidia.cudnn.__file__)\"\
+    ))\nexport LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$CONDA_PREFIX/lib/:$CUDNN_PATH/lib\n\
+    export XLA_FLAGS=--xla_gpu_cuda_data_dir=$CONDA_PREFIX"
+  gpu_type: v100
+  mem: 128GB
+  name: ptype-ev
+  ncpus: 8
+  ngpus: 1
+  queue: casper
+  select: 1
+  walltime: 43200
