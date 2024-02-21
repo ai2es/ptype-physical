@@ -16,9 +16,8 @@ import tqdm
 from cartopy import crs as ccrs
 from cartopy import feature as cfeature
 import imageio
-from PIL import Image
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime
 import xarray as xr
 from scipy.ndimage.filters import gaussian_filter
 
@@ -34,14 +33,17 @@ coord_dict = {"na":[50.0, 20.0, -63.0, -125.0],
  "okla":[39.0, 31.0, -90.0, -106.0]}
  
 # colors = {0:'lime', 1:'darkturquoise', 2:'red', 3:'black'}
-colors = {0:'lime', 1:'dodgerblue', 2:'red', 3:'black'}
+colors = {0: 'lime', 1: 'dodgerblue', 2: 'red', 3: 'black'}
 datapath = "/glade/p/cisl/aiml/ai2es/winter_ptypes/precip_rap/"
 
-def ptype_map(datatype, starttime, endtime, gifname, imgsavepath="gif_images", gifsavepath="gifs", coords="na", duration=0.5):
+
+def ptype_map(datatype, starttime, endtime, gifname,
+              imgsavepath="gif_images", gifsavepath="gifs", coords="na",
+              duration=0.5):
     """
     Create and save GIF of P-Type data over specific CONUS region and time range.
-    
-    :param datatype: 
+
+    :param datatype:
     :param starttime:
     :param endtime:
     :param gifname:
@@ -55,7 +57,7 @@ def ptype_map(datatype, starttime, endtime, gifname, imgsavepath="gif_images", g
     enddate = datetime.strptime(endtime, "%Y%m%d %H:%M:%S")    
     time_range = pd.date_range(startdate, enddate, freq="h").strftime("%Y%m%d %H:%M:%S")
     coords = coord_dict[coords]
-    
+
     # Account for differences between mPING and ASOS.
     if datatype == "mping":
         if enddate >= datetime.strptime("20180101", "%Y%m%d"):

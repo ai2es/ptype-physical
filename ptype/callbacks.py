@@ -5,7 +5,7 @@ from tensorflow.python.keras.callbacks import (
     CSVLogger,
     EarlyStopping,
 )
-from evml.keras.models import calc_prob_uncertainty
+from mlguess.keras.models import calc_prob_uncertainty
 from tensorflow.python.keras.callbacks import ReduceLROnPlateau
 from sklearn.metrics import precision_recall_fscore_support, roc_auc_score
 from hagelslag.evaluation.ProbabilityMetrics import DistributedROC
