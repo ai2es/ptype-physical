@@ -8,7 +8,6 @@ import numpy as np
 import xarray as xr
 import metpy.calc
 from metpy.units import units
-import pandas as pd
 import geopandas as gpd
 from shapely.geometry import Point
 import cartopy.io.shapereader as shpreader

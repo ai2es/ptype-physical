@@ -13,8 +13,8 @@ import sys
 
 from imblearn.under_sampling import RandomUnderSampler
 from imblearn.tensorflow import balanced_batch_generator
-from evml.keras.losses import DirichletEvidentialLoss
-from evml.keras.callbacks import ReportEpoch
+from mlguess.keras.losses import DirichletEvidentialLoss
+from mlguess.keras.callbacks import ReportEpoch
 
 
 logger = logging.getLogger(__name__)
