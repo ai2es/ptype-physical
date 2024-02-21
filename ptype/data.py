@@ -285,7 +285,7 @@ def preprocess_data(
     scalers["input"] = scalar_obs[scaler_type]
     scalers["output_label"] = LabelEncoder()
     if encoder_type == "onehot":
-        scalers["output_onehot"] = OneHotEncoder(sparse=False)
+        scalers["output_onehot"] = OneHotEncoder(sparse_output=False)
 
     if groupby and "quantile" not in scaler_type:
         scaled_data["train_x"] = pd.DataFrame(
