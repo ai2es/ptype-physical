@@ -327,7 +327,7 @@ def preprocess_data(
         )
 
     if encoder_type == "onehot":
-        scalers["output_onehot"] = OneHotEncoder(sparse=False)
+        scalers["output_onehot"] = OneHotEncoder(sparse_output=False)
         scaled_data["train_y"] = scalers["output_onehot"].fit_transform(
             np.expand_dims(scaled_data["train_y"], 1)
         )
