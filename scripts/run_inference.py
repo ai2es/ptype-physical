@@ -3,7 +3,7 @@ import os
 import yaml
 import pandas as pd
 from ptype.inference import (download_data, load_data, convert_and_interpolate,
-    load_model, transform_data, grid_predictions, save_data)
+    load_saved_model, transform_data, grid_predictions, save_data)
 import itertools
 from multiprocessing import Pool
 from dask.distributed import Client
@@ -13,46 +13,47 @@ from dask_jobqueue import PBSCluster
 def main(config, username, date, forecast_hour):
     print("starting", date, "for forecast hour: ", forecast_hour)
     out_path = config["out_path"].replace("username", username)
-    print(out_path)
     nwp_model = config["model"]
-    model, transformer, input_features = load_model(model_path=config["ML_model_path"],
-                                                    input_scaler_file=config["input_scaler_file"])
+    model, transformer, input_features = load_saved_model(model_path=config["ML_model_path"],
+                                                          scaler_path=config["input_scaler_file"])
     mod_file = download_data(date=date,
                              model=config["model"],
-                             product=config["variables"]["model"][nwp_model]["product"],
                              save_dir=out_path,
-                             forecast_hour=forecast_hour)
+                             forecast_hour=forecast_hour,
+                             **config["variables"]["model"][nwp_model]["kwargs"])
 
     ds, df, surface_vars = load_data(var_dict=config["variables"]["model"][nwp_model],
                                      file=mod_file,
                                      model=nwp_model,
                                      extent=config["extent"],
                                      drop=config["drop_input_data"])
+
     data, interpolated_pl = convert_and_interpolate(data=df,
                                                     surface_data=surface_vars,
                                                     pressure_levels=ds["isobaricInhPa"],
-                                                    height_levels=config["height_levels"])
+                                                    height_levels=config["height_levels"],
+                                                    variables=config["ml_atm_varaibles"])
 
     x_data = transform_data(input_data=data,
                             transformer=transformer,
                             input_features=input_features)
 
     if config["evidential"]:
-        predictions = model.predict_uncertainty(x_data)
+        predictions = model.predict(x_data, return_uncertainties=True, batch_size=2048)
     else:
-        predictions = model.predict(x_data, batch_size=2048)
+        predictions = model.predict(x_data, return_uncertainties=False, batch_size=2048)
 
     gridded_preds = grid_predictions(data=ds,
                                      predictions=predictions,
                                      interp_df=data,
                                      interpolated_pl=interpolated_pl,
+                                     variables=config["ml_atm_varaibles"],
                                      height_levels=config['height_levels'],
                                      add_interp_data=config["add_interp_data"],
                                      evidential=config["evidential"])
     save_data(dataset=gridded_preds,
               out_path=out_path,
-              date=date,
-              model=config["model"],
+              model_name=config["model"],
               forecast_hour=forecast_hour,
               save_format=config["save_format"])
     os.remove(str(mod_file))  # delete grib file
