@@ -1,0 +1,70 @@
+model: "hrrr"
+evidential: True
+output_uncertainties: True
+ML_model_path: "/glade/derecho/scratch/cbecker/evi_model_ptype_050124.keras"
+input_scaler_file: "/glade/derecho/scratch/cbecker/evi_scaler.json"
+out_path: "/glade/derecho/scratch/cbecker/ptype_real_time/winter_2023_2024/"
+drop_input_data: False
+add_interp_data: True
+n_processors: 60      # Only used if use_dask=False (dask has its own parameters at bottom of config)
+use_dask: False
+save_format: "netcdf"   # Supports "zarr" and "netcdf"
+extent: [-108, -89, 36, 48]  # [min_lon, max_lon, min_lat, max_lat] or "full"
+predict_batch_size: 2048
+dates:
+  most_recent: False
+  start: "2024-03-01 00:00" # ignore if most_recent is True
+  end: "2024-04-30 23:00"   # ignore if most_recent is True
+  frequency: "1H"
+
+forecast_range:
+  start: 1
+  end: 18
+  interval: 1
+
+ml_atm_varaibles: ['t', 'dpt']
+
+height_levels:
+  low: 0
+  high: 5000
+  interval: 250
+
+variables:
+  model:
+    rap:
+      isobaricInhPa: ["t", "u", "v", "r", "gh"]
+      surface: ["orog", "crain", "csnow", "cicep", "cfrzr"]
+      heightAboveGround: ["t2m", "d2m", "u10", "v10"]
+      kwargs:
+        product: "awp130pgrb"
+    hrrr:
+      isobaricInhPa: ["t", "u", "v", "dpt", "gh"]
+      surface: ["orog", "sp", "crain", "csnow", "cicep", "cfrzr", "tp"]
+      atmosphere: ["refc"]
+      heightAboveGround: ["t2m", "d2m", "u10", "v10"]
+      kwargs:
+        product: "prs"
+    gfs:
+      isobaricInhPa: [ "t", "u", "v", "q", "gh" ]
+      surface: ["orog", "crain", "csnow", "cicep", "cfrzr"]
+      heightAboveGround: [ "t2m", "d2m", "u10", "v10" ]
+      product: "pgrb2.0p25"
+    nam:
+      isobaricInhPa: [ "t", "u", "v", "dpt", "gh" ]
+      surface: ["orog", "crain", "csnow", "cicep", "cfrzr"]
+      heightAboveGround: [ "t2m", "d2m", "u10", "v10" ]
+      product: "conusnest.hiresf"
+
+dask_params:
+  PBS:
+    resource_spec: "select=1:ncpus=12:mem=128GB"
+    processes: 12
+    project: "NAML0001"
+    n_workers: 1
+    queue: "casper"
+    walltime: "02:00:00"
+    memory: "1TB"
+    interface: "ib0"
+    local_directory: "/glade/work/cbecker/ptype-physical/dask/"
+    log_directory: "/glade/work/cbecker/ptype-physical/dask_logs/"
+  n_jobs: 10
