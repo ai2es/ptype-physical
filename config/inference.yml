@@ -1,5 +1,5 @@
 model: "hrrr"
-evidential: True
+output_uncertainties: True # set to False if not using an Evidential Model
 ML_model_path: "/glade/derecho/scratch/cbecker/evi_model_ptype_050124.keras"
 input_scaler_file: "/glade/derecho/scratch/cbecker/evi_scaler.json"
 out_path: "/glade/derecho/scratch/username/ptype_real_time/central_region/"
@@ -9,6 +9,7 @@ n_processors: 18      # Only used if use_dask=False (dask has its own parameters
 use_dask: False
 save_format: "netcdf"   # Supports "zarr" and "netcdf"
 extent: [-108, -89, 36, 48]  # [min_lon, max_lon, min_lat, max_lat] or "full"
+predict_batch_size: 2048
 dates:
   most_recent: True
   start: "2022-02-03 00:00" # ignore if most_recent is True

@@ -38,10 +38,9 @@ def main(config, username, date, forecast_hour):
                             transformer=transformer,
                             input_features=input_features)
 
-    if config["evidential"]:
-        predictions = model.predict(x_data, return_uncertainties=True, batch_size=2048)
-    else:
-        predictions = model.predict(x_data, return_uncertainties=False, batch_size=2048)
+    predictions = model.predict(x_data,
+                                return_uncertainties=config["output_uncertainties"],
+                                batch_size=config["predict_batch_size"])
 
     gridded_preds = grid_predictions(data=ds,
                                      predictions=predictions,
