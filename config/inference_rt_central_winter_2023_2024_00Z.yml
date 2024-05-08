@@ -1,19 +1,20 @@
 model: "hrrr"
-output_uncertainties: True # set to False if not using an Evidential Model
+evidential: True
+output_uncertainties: True
 ML_model_path: "/glade/derecho/scratch/cbecker/evi_model_ptype_050124.keras"
 input_scaler_file: "/glade/derecho/scratch/cbecker/evi_scaler.json"
-out_path: "/glade/derecho/scratch/username/ptype_real_time/central_region/"
+out_path: "/glade/derecho/scratch/cbecker/ptype_real_time/winter_2023_2024/"
 drop_input_data: False
 add_interp_data: True
-n_processors: 18      # Only used if use_dask=False (dask has its own parameters at bottom of config)
+n_processors: 60      # Only used if use_dask=False (dask has its own parameters at bottom of config)
 use_dask: False
 save_format: "netcdf"   # Supports "zarr" and "netcdf"
 extent: [-108, -89, 36, 48]  # [min_lon, max_lon, min_lat, max_lat] or "full"
 predict_batch_size: 2048
 dates:
-  most_recent: True
-  start: "2022-02-03 00:00" # ignore if most_recent is True
-  end: "2022-02-03 05:00"   # ignore if most_recent is True
+  most_recent: False
+  start: "2024-03-01 00:00" # ignore if most_recent is True
+  end: "2024-04-30 23:00"   # ignore if most_recent is True
   frequency: "1H"
 
 forecast_range:
@@ -47,21 +48,12 @@ variables:
       isobaricInhPa: [ "t", "u", "v", "q", "gh" ]
       surface: ["orog", "crain", "csnow", "cicep", "cfrzr"]
       heightAboveGround: [ "t2m", "d2m", "u10", "v10" ]
-      kwargs:
-        product: "pgrb2.0p25"
+      product: "pgrb2.0p25"
     nam:
       isobaricInhPa: [ "t", "u", "v", "dpt", "gh" ]
       surface: ["orog", "crain", "csnow", "cicep", "cfrzr"]
       heightAboveGround: [ "t2m", "d2m", "u10", "v10" ]
-      kwargs:
-        product: "conusnest.hiresf"
-    gefs:
-      isobaricInhPa: [ "t", "u", "v", "q", "gh" ]
-      surface: [ "orog", "crain", "csnow", "cicep", "cfrzr" ]
-      heightAboveGround: [ "t2m", "d2m", "u10", "v10" ]
-      kwargs:
-        product: "wave"
-        member: "p11"
+      product: "conusnest.hiresf"
 
 dask_params:
   PBS:
