@@ -58,12 +58,21 @@ def load_data(files, variables):
             ds[f'ML_{ptype}'] = xr.where(precip_sum >= 1, x=ds[f'ML_{ptype}'], y=0)
             ds[f'ML_{ptype}_epi'] = xr.where(precip_sum >= 1, x=ds[f"ML_{ptype}_epi"], y=0)
             ds[f'ML_{ptype}_ale'] = xr.where(precip_sum >= 1, x=ds[f"ML_{ptype}_ale"], y=0)
-        concat = xr.concat([ds[f'ML_{ptype}'] for ptype in ptypes], dim='ptype')
+
+        ptype_hier = ['frzr', 'icep', 'snow', 'rain']
+        concat = xr.concat([ds[f'ML_{ptype}'] for ptype in ptype_hier], dim='ptype')
         concat_tle = concat.mean("time")
         max_idx = concat_tle.argmax(dim='ptype')
-        for i, ptype in enumerate(ptypes):
+
+        concat_hrrr = xr.concat([ds[f'c{ptype}'] for ptype in ptype_hier], dim='ptype')
+        concat_hrrr_tle = concat_hrrr.mean("time")
+        max_idx_tle = concat_hrrr_tle.argmax(dim='ptype')
+
+        for i, ptype in enumerate(ptype_hier):
             ds[f'ML_c{ptype}'] = xr.where(max_idx == i, 1, np.nan) # set categorical values
+            #ds[f'ML_max_c{ptype}'] = xr.where(max_idx == i, concat_tle[i], np.nan)
             ds[ptype] = ds[f'ML_c{ptype}'] * ds[f'ML_{ptype}'] # set categorical multiplied by prob
+            ds[f'max_c{ptype}'] = xr.where((max_idx_tle == i) & (concat_hrrr_tle[i] != 0), concat_hrrr_tle[i], np.nan)
         ds = ds.mean("time").apply(lambda x: x.where(x != 0, np.nan)) # sum and set 0 to nan in one line
         return ds
         
@@ -81,13 +90,13 @@ def plot_hrrr_ptype(ds):
     projection = ccrs.LambertConformal(central_longitude=-97.5, standard_parallels=(38.5, 38.5))
     fig, ax = plt.subplots(figsize=(7, 7), subplot_kw={'projection': projection})
     ax.set_extent([-108, -91, 37, 47.5], crs=ccrs.PlateCarree())
-    cmaps = ["Greens", "Blues", "cool", "Reds"]
+    cmaps = ["Greens", "Blues", "Greys", "Reds"]
     ptyped = ['rain', 'snow', 'icep', 'frzr'] # ordered in terms of importance, most important plotted last
     lat = ds['latitude']
     lon = ds['longitude']
 
     for i, ptype in enumerate(ptyped):
-        h = ax.pcolormesh(lon, lat, ds[f'c{ptype}'] * 0.9, transform=ccrs.PlateCarree(), cmap=cmaps[i], vmin=0, vmax=1)
+        h = ax.pcolormesh(lon, lat, ds[f'max_c{ptype}'] * 0.9, transform=ccrs.PlateCarree(), cmap=cmaps[i], vmin=0, vmax=1)
     
     ax.add_feature(cfeature.STATES, linewidth=0.5)
     return ax
@@ -99,13 +108,13 @@ def plot_ptype(ds, ptype=None):
     #projection = ccrs.PlateCarree()
     fig, ax = plt.subplots(figsize=(7, 7), subplot_kw={'projection': projection})
     ax.set_extent([-108, -91, 37, 47.5], crs=ccrs.PlateCarree())
-    cmaps = ["Blues", "Greens", "cool", "Reds"]
+    cmaps = ["Blues", "Greens", "Greys", "Reds"]
     ptyped = ['snow', 'rain', 'icep', 'frzr']
     lat = ds['latitude']
     lon = ds['longitude']
    
     for i, ptype in enumerate(ptyped):
-        h = ax.pcolormesh(lon, lat, ds[ptype], transform=ccrs.PlateCarree(), cmap=cmaps[i], vmin=0, vmax=1)
+        h = ax.pcolormesh(lon, lat, ds[f'{ptype}'], transform=ccrs.PlateCarree(), cmap=cmaps[i], vmin=0, vmax=1)
     
     ax.add_feature(cfeature.STATES, linewidth=0.5)
     return ax
@@ -241,9 +250,9 @@ if __name__ == '__main__':
     # Example usage:
     base_path = '/glade/derecho/scratch/cbecker/ptype_real_time/winter_2023_2024/hrrr'
     valid_time = '2023-12-26 0100'
-    time = valid_time[:-5]
-    n_members = 1
-    output_dir = './plots/'
+    time = valid_time.replace(' ', '_')
+    n_members = 18
+    output_dir = f'./plots/{time}/'
 
     # check if path exists
     if not os.path.exists(output_dir):
