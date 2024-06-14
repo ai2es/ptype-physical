@@ -96,7 +96,7 @@ def plot_hrrr_ptype(ds):
     lon = ds['longitude']
 
     for i, ptype in enumerate(ptyped):
-        h = ax.pcolormesh(lon, lat, ds[f'max_c{ptype}'] * 0.9, transform=ccrs.PlateCarree(), cmap=cmaps[i], vmin=0, vmax=1)
+        h = ax.pcolormesh(lon, lat, ds[f'max_c{ptype}'], transform=ccrs.PlateCarree(), cmap=cmaps[i], vmin=0, vmax=1)
     
     ax.add_feature(cfeature.STATES, linewidth=0.5)
     return ax
