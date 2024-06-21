@@ -10,11 +10,8 @@ from matplotlib import pyplot as plt
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 
-import logging
 
-ptypes = ['snow', 'rain', 'frzr', 'icep']
-
-def get_tle_files(base_path, valid_time, n_members=1, min_lead_time=1, init_step=1):
+def get_tle_files(base_path, valid_time, n_members=1):
     '''
     Get ptype files at a given valid time.
 
@@ -22,8 +19,6 @@ def get_tle_files(base_path, valid_time, n_members=1, min_lead_time=1, init_step
         base_path (str): path to directory
         valid_time (str): YYYY-mm-dd HHMM
         n_members (int): for gathering an ensemble of times, default is no ensemble
-        min_lead_time (int): ?
-        init_step (int): not implemented 
     '''
     date = pd.to_datetime(valid_time)
     file_names = []
@@ -40,7 +35,17 @@ def get_tle_files(base_path, valid_time, n_members=1, min_lead_time=1, init_step
 
 
 def load_data(files, variables):
+    '''
+    Load ptype files with xarray and pre process before use
+    '''
+    ptypes = ['snow', 'rain', 'frzr', 'icep']
     def process(ds):
+        '''
+        Used for loading single ptype files. Ptype data is masked where HRRR has precip, ie. where the sum across 4 ptype
+        classifications is greater than or equal to 1. 
+
+        The only new variable added is {ptype} - masked evidential classification of each ptype scaled by masked evidential probability
+        '''
         ds = ds[variables]
         precip_sum = ds[['crain', 'csnow', 'cicep', 'cfrzr']].to_array().sum(dim='variable')
         for ptype in ptypes:
@@ -48,14 +53,25 @@ def load_data(files, variables):
             ds[f'ML_{ptype}'] = xr.where(precip_sum >= 1, x=ds[f"ML_{ptype}"], y=np.nan)
             ds[f'ML_{ptype}_epi'] = xr.where(precip_sum >= 1, x=ds[f"ML_{ptype}_epi"], y=np.nan)
             ds[f'ML_{ptype}_ale'] = xr.where(precip_sum >= 1, x=ds[f"ML_{ptype}_ale"], y=np.nan)
-            ds[ptype] = ds[f'ML_c{ptype}'].where(ds[f'ML_c{ptype}'] >= 1) * ds[f'ML_{ptype}'] # mask where precip sum >= 1 and where ML_cptype >= 1
-            ds[f'c{ptype}'] = xr.where(ds[f'c{ptype}'] == 1, 1, np.nan)
+            ds[ptype] = ds[f'ML_c{ptype}'].where(ds[f'ML_c{ptype}'] >= 1) * ds[f'ML_{ptype}']  # evidential classification scaled by probability
+            ds[f'c{ptype}'] = xr.where(ds[f'c{ptype}'] == 1, 1, np.nan)  # convert 0s to nans for plotting purposes
         return ds
     def process_ensemble(ds):
+        '''
+        Used for loading ensemble of ptype files with a single valid time and multiple different init times. 
+        Ptype data is masked where HRRR has precip. Masked values are set to zero before taking the average across
+        ensemble members and set to nan after for plotting purposes. 
+
+        New classifications are made for evidential predictions (f'ML_c{ptype}') and HRRR predictions (f'c{ptype}')
+        with a hierarchy of importance: freezing rain > sleet > snow > rain, such that classifications don't overlap.
+        Evidential categorization prediction is computed by taking the maximum mean probability across 4 ptypes and setting
+        a value of 1 to the highest ptype and 0 to the rest. HRRR categorization prediction is computed in a similar 
+        way, however, the classification is based on max proportion of HRRR predictions across ptypes.
+        '''
         ds = ds[variables]
         precip_sum = ds[['crain', 'csnow', 'cicep', 'cfrzr']].to_array().sum(dim='variable')
         for ptype in ptypes:
-            ds[f'ML_{ptype}'] = xr.where(precip_sum >= 1, x=ds[f'ML_{ptype}'], y=0)
+            ds[f'ML_{ptype}'] = xr.where(precip_sum >= 1, x=ds[f'ML_{ptype}'], y=0) 
             ds[f'ML_{ptype}_epi'] = xr.where(precip_sum >= 1, x=ds[f"ML_{ptype}_epi"], y=0)
             ds[f'ML_{ptype}_ale'] = xr.where(precip_sum >= 1, x=ds[f"ML_{ptype}_ale"], y=0)
 
@@ -70,10 +86,9 @@ def load_data(files, variables):
 
         for i, ptype in enumerate(ptype_hier):
             ds[f'ML_c{ptype}'] = xr.where(max_idx == i, 1, np.nan) # set categorical values
-            #ds[f'ML_max_c{ptype}'] = xr.where(max_idx == i, concat_tle[i], np.nan)
-            ds[ptype] = ds[f'ML_c{ptype}'] * ds[f'ML_{ptype}'] # set categorical multiplied by prob
-            ds[f'max_c{ptype}'] = xr.where((max_idx_tle == i) & (concat_hrrr_tle[i] != 0), concat_hrrr_tle[i], np.nan)
-        ds = ds.mean("time").apply(lambda x: x.where(x != 0, np.nan)) # sum and set 0 to nan in one line
+            ds[ptype] = ds[f'ML_c{ptype}'] * ds[f'ML_{ptype}'] # set categorical scaled by probability
+            ds[f'c{ptype}'] = xr.where((max_idx_tle == i) & (concat_hrrr_tle[i] != 0), concat_hrrr_tle[i], np.nan)
+        ds = ds.mean("time").apply(lambda x: x.where(x != 0, np.nan)) # average and set 0 to nan in one line
         return ds
         
     if len(files) == 1:
@@ -85,64 +100,56 @@ def load_data(files, variables):
         return ds
 
 
-def plot_hrrr_ptype(ds):
+def plot_hrrr_ptype(ds, cmap=['Greens', 'Blues', 'Reds', 'Greys'], ptypes=['snow', 'rain', 'frzr', 'icep'], extent=[-108, -91, 37, 47.5]):
     '''plot hrrr precip categorizations'''
     projection = ccrs.LambertConformal(central_longitude=-97.5, standard_parallels=(38.5, 38.5))
     fig, ax = plt.subplots(figsize=(7, 7), subplot_kw={'projection': projection})
-    ax.set_extent([-108, -91, 37, 47.5], crs=ccrs.PlateCarree())
-    cmaps = ["Greens", "Blues", "Greys", "Reds"]
-    ptyped = ['rain', 'snow', 'icep', 'frzr'] # ordered in terms of importance, most important plotted last
+    ax.set_extent(extent, crs=ccrs.PlateCarree())
     lat = ds['latitude']
     lon = ds['longitude']
 
-    for i, ptype in enumerate(ptyped):
-        h = ax.pcolormesh(lon, lat, ds[f'max_c{ptype}'], transform=ccrs.PlateCarree(), cmap=cmaps[i], vmin=0, vmax=1)
+    for i, ptype in enumerate(ptypes):
+        h = ax.pcolormesh(lon, lat, ds[f'c{ptype}'], transform=ccrs.PlateCarree(), cmap=cmap[i], vmin=0, vmax=1)
     
     ax.add_feature(cfeature.STATES, linewidth=0.5)
     return ax
     
 
-def plot_ptype(ds, ptype=None):
+def plot_ptype(ds, ptype=None, cmap=['Greens', 'Blues', 'Reds', 'Greys'], ptypes=['snow', 'rain', 'frzr', 'icep'], extent=[-108, -91, 37, 47.5]):
     '''plots probabilities of each precipitation type based on the type with maximum probability'''
     projection = ccrs.LambertConformal(central_longitude=-97.5, standard_parallels=(38.5, 38.5))
-    #projection = ccrs.PlateCarree()
     fig, ax = plt.subplots(figsize=(7, 7), subplot_kw={'projection': projection})
-    ax.set_extent([-108, -91, 37, 47.5], crs=ccrs.PlateCarree())
-    cmaps = ["Blues", "Greens", "Greys", "Reds"]
-    ptyped = ['snow', 'rain', 'icep', 'frzr']
+    ax.set_extent(extent, crs=ccrs.PlateCarree())
     lat = ds['latitude']
     lon = ds['longitude']
    
-    for i, ptype in enumerate(ptyped):
-        h = ax.pcolormesh(lon, lat, ds[f'{ptype}'], transform=ccrs.PlateCarree(), cmap=cmaps[i], vmin=0, vmax=1)
+    for i, ptype in enumerate(ptypes):
+        h = ax.pcolormesh(lon, lat, ds[f'{ptype}'], transform=ccrs.PlateCarree(), cmap=cmap[i], vmin=0, vmax=1)
     
     ax.add_feature(cfeature.STATES, linewidth=0.5)
     return ax
 
 
-def plot_probability(ds, ptype):
+def plot_probability(ds, ptype, cmap='GnBu', extent=[-108, -91, 37, 47.5]):
     '''plots probabilities where a certain precipitation type occurs'''
     projection = ccrs.LambertConformal(central_longitude=-97.5, standard_parallels=(38.5, 38.5))
-    extent = [-108, -91, 37, 47.5]    
-    #projection=ccrs.PlateCarree()
     fig, ax = plt.subplots(figsize=(7, 7), subplot_kw={'projection': projection})
-    ax.set_extent([-108, -91, 37, 47.5], crs=ccrs.PlateCarree())
+    ax.set_extent(extent, crs=ccrs.PlateCarree())
     ax.add_feature(cfeature.STATES)
     
     lat = ds['latitude']
     lon = ds['longitude']
     prob_data = ds[f'ML_{ptype}']
-    pcm = ax.pcolormesh(lon, lat, prob_data, transform=ccrs.PlateCarree(), cmap='GnBu')
+    pcm = ax.pcolormesh(lon, lat, prob_data, transform=ccrs.PlateCarree(), cmap=cmap)
     
     cbar = plt.colorbar(pcm, ax=ax, pad=0.025, fraction=0.042)
     cbar.set_label(f'Probability of {ptype}')
     return ax
 
 
-def plot_uncertainty(ds, ptype):
+def plot_uncertainty(ds, ptype, cmap='viridis', extent=[-108, -91, 37, 47.5]):
     '''plot epistemic and aleatoric uncertainty where a certain precipitation type occurs'''
     projection = ccrs.LambertConformal(central_longitude=-97.5, standard_parallels=(38.5, 38.5))
-    extent = [-108, -91, 37, 47.5]
     fig, axs = plt.subplots(1, 2, figsize=(15, 7), subplot_kw={'projection': projection})
     
     for ax in axs:
@@ -155,34 +162,34 @@ def plot_uncertainty(ds, ptype):
     ale_data = ds[f'ML_{ptype}_ale']
     epi_data = ds[f'ML_{ptype}_epi']
     
-    pcm_ale = axs[0].pcolormesh(lon, lat, ale_data, transform=ccrs.PlateCarree(), vmin=0)
+    pcm_ale = axs[0].pcolormesh(lon, lat, ale_data, transform=ccrs.PlateCarree(), vmin=0, cmap=cmap)
     plt.colorbar(pcm_ale, ax=axs[0], fraction=0.042, pad=0.025,)
     
-    pcm_epi = axs[1].pcolormesh(lon, lat, epi_data, transform=ccrs.PlateCarree(), vmin=0)
+    pcm_epi = axs[1].pcolormesh(lon, lat, epi_data, transform=ccrs.PlateCarree(), vmin=0, cmap=cmap)
     plt.colorbar(pcm_epi, ax=axs[1], fraction=0.042, pad=0.025)
     
     plt.tight_layout()
     return axs
 
 
-def plot_winds(ds, base_plot, ptype=None):
+def plot_winds(ds, base_plot, ptype=None, **kwargs):
     '''plots u and v wind quivers on top of another plot'''
-    ax = base_plot(ds, ptype)
+    ax = base_plot(ds, ptype, **kwargs)
     u = ds['u10'].values
     v = ds['v10'].values
     lat = ds['latitude'].values
     lon = ds['longitude'].values
     if isinstance(ax, np.ndarray): # case of multiple subplots (possibly add loop later)
-        ax[0].quiver(lon[::20, ::20], lat[::20, ::20], u[::20, ::20], v[::20, ::20], width=0.0015, transform=ccrs.PlateCarree())
-        ax[1].quiver(lon[::20, ::20], lat[::20, ::20], u[::20, ::20], v[::20, ::20], width=0.0015, transform=ccrs.PlateCarree())
+        ax[0].barbs(lon[::20, ::20], lat[::20, ::20], u[::20, ::20], v[::20, ::20], length=4, linewidth=0.7, transform=ccrs.PlateCarree())
+        ax[1].barbs(lon[::20, ::20], lat[::20, ::20], u[::20, ::20], v[::20, ::20], length=4, linewidth=0.7, transform=ccrs.PlateCarree())
     else:
-        ax.quiver(lon[::20, ::20], lat[::20, ::20], u[::20, ::20], v[::20, ::20], width=0.0015, transform=ccrs.PlateCarree())
+        ax.barbs(lon[::20, ::20], lat[::20, ::20], u[::20, ::20], v[::20, ::20], length=4, linewidth=0.7, transform=ccrs.PlateCarree())
     return ax
     
 
-def plot_temp(ds, base_plot, ptype=None):
+def plot_temp(ds, base_plot, ptype=None, **kwargs):
     '''plots temp contours on top of another plot'''
-    ax = base_plot(ds, ptype)
+    ax = base_plot(ds, ptype, **kwargs)
     lat = ds['latitude']
     lon = ds['longitude']
     temp_data = ds['t2m'] - 273.15  # Convert from Kelvin to Celsius
@@ -194,9 +201,9 @@ def plot_temp(ds, base_plot, ptype=None):
     return ax
     
 
-def plot_dpt(ds, base_plot, ptype=None):
+def plot_dpt(ds, base_plot, ptype=None, **kwargs):
     '''plots dewpoint contours on top of another plot'''
-    ax = base_plot(ds, ptype)
+    ax = base_plot(ds, ptype, **kwargs)
     lat = ds['latitude']
     lon = ds['longitude']
     dpt_data = ds['d2m'] - 273.15  # Convert from Kelvin to Celsius
@@ -217,9 +224,9 @@ def contour(ax, lon, lat, data):
     #cbar.set_label('Dew Pt Temperature (°C)')
 
 
-def plot_sp(ds, base_plot, ptype=None):
+def plot_sp(ds, base_plot, ptype=None, **kwargs):
     '''plot surface pressure contours on top of base plot'''
-    ax = base_plot(ds, ptype)
+    ax = base_plot(ds, ptype, **kwargs)
     lat = ds['latitude']
     lon = ds['longitude']
     sp_data = ds['sp']
@@ -242,88 +249,3 @@ def save(title, outname, ax=None):
     plt.savefig(outname, bbox_inches='tight', dpi=300)
     plt.close()
 
-
-if __name__ == '__main__':
-    logger = logging.getLogger(__name__)
-    logging.basicConfig(level=logging.INFO)
-
-    # Example usage:
-    base_path = '/glade/derecho/scratch/cbecker/ptype_real_time/winter_2023_2024/hrrr'
-    valid_time = '2023-12-26 0100'
-    time = valid_time.replace(' ', '_')
-    n_members = 18
-    output_dir = f'./plots/{time}/'
-
-    # check if path exists
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    
-    variables = [
-        'u10', 'v10', 'ML_rain', 'ML_crain', 'ML_snow', 'ML_csnow', 'ML_frzr', 'ML_cfrzr', 'ML_icep', 'ML_cicep',
-        'crain', 'csnow', 'cfrzr', 'cicep', 'ML_rain_ale', 'ML_rain_epi', 'ML_snow_ale', 'ML_snow_epi', 'ML_frzr_ale',
-        'ML_frzr_epi', 'ML_icep_ale', 'ML_icep_epi', 'd2m', 't2m', 'sp'
-    ]
-    title = f''
-    outname = f''
-    
-    if n_members > 1:
-        title += f'Time Lagged Ensemble'
-        outname += f'time_lagged_'
-    
-    files = get_tle_files(base_path, valid_time, n_members)
-    ds = load_data(files, variables)
-    logger.info(f'{len(files)} files loaded')
-    
-    title_ptype = f'{title} {valid_time} Precip\nSnow = Blue, Rain = Green, Sleet = Purple, Freezing Rain = Red'
-    out_ptype = f'{output_dir}{outname}ptype_{time}'
-    
-    plot_hrrr_ptype(ds)
-    save(title_ptype, f'{out_ptype}_hrrr.png')
-
-    plot_ptype(ds)
-    save(title_ptype, f'{out_ptype}.png')
-
-    plot_winds(ds, plot_ptype)
-    save(title_ptype, f'{out_ptype}_quivers.png')
-
-    plot_temp(ds, plot_ptype)
-    save(title_ptype, f'{out_ptype}_temp.png')
-
-    plot_dpt(ds, plot_ptype)
-    save(title_ptype, f'{out_ptype}_dpt.png')
-
-    plot_sp(ds, plot_ptype)
-    save(f'{title_ptype}', f'{out_ptype}_sp.png')
-
-    for ptype in ptypes:
-        logger.info(f'plotting prob {ptype}')
-        title_prob = f'{title} probability {ptype} {valid_time}'
-        out_prob = f'{output_dir}{outname}prob_{time}_{ptype}'
-        plot_probability(ds, ptype)
-        save(title_prob, f'{out_prob}.png')
-        
-        plot_winds(ds, plot_probability, ptype=ptype)
-        save(f'{title_prob}', f'{out_prob}_quivers.png')
-
-        plot_temp(ds, plot_probability, ptype=ptype)
-        save(f'{title_prob}', f'{out_prob}_temp.png')
-
-        plot_dpt(ds, plot_probability, ptype=ptype)
-        save(f'{title_prob}', f'{out_prob}_dpt.png')
-        
-        logger.info(f'plotting uncertainty {ptype}')
-        title_uncert = [f'{title} Aleatoric Uncertainty {ptype} {valid_time}', f'{title} Epistemic Uncertainty {ptype} {valid_time}']
-        out_uncert = f'{output_dir}{outname}uncert_{time}_{ptype}'
-        ax = plot_uncertainty(ds, ptype)
-        save(title_uncert, f'{out_uncert}.png', ax)
-
-        ax = plot_winds(ds, plot_uncertainty, ptype=ptype)
-        save(title_uncert, f'{out_uncert}_quivers.png', ax)
-        
-        ax = plot_temp(ds, plot_uncertainty, ptype=ptype)
-        save(title_uncert, f'{out_uncert}_temp.png', ax)
-
-        ax = plot_dpt(ds, plot_uncertainty, ptype=ptype)
-        save(title_uncert, f'{out_uncert}_dpt.png', ax)
-
-    
