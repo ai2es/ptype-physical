@@ -1,7 +1,9 @@
 import logging
-from plotting_tools import get_tle_files, load_data, plot_hrrr_ptype, plot_ptype, plot_probability, plot_uncertainty, plot_winds, plot_temp, plot_dpt, plot_sp, save
 import os
 from matplotlib import colors as mcolors
+
+from ptype.plotting import get_tle_files, load_data, plot_hrrr_ptype, plot_ptype, plot_probability, plot_uncertainty
+from ptype.plotting import plot_winds, plot_temp, plot_dpt, plot_sp, save
 
 
 if __name__ == '__main__':
@@ -13,7 +15,7 @@ if __name__ == '__main__':
     valid_time = '2023-12-16 0700'
     time = valid_time.replace(' ', '_')
     n_members = 18
-    output_dir = f'/glade/work/sreiner/ptype_plots/test/{time}/'
+    output_dir = f'/glade/work/sreiner/ptype_plots/{time}/'
 
     # check if path exists
     if not os.path.exists(output_dir):
