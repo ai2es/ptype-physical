@@ -5,7 +5,6 @@ from tensorflow.python.keras.callbacks import (
     CSVLogger,
     EarlyStopping,
 )
-from mlguess.keras.models import calc_prob_uncertainty
 from tensorflow.python.keras.callbacks import ReduceLROnPlateau
 from sklearn.metrics import precision_recall_fscore_support, roc_auc_score
 from hagelslag.evaluation.ProbabilityMetrics import DistributedROC
@@ -68,7 +67,7 @@ class MetricsCallback(tf.keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs={}):
         pred_probs = np.asarray(self.model.predict(self.x))
         if self.use_uncertainty:
-            pred_probs, _, _, _ = calc_prob_uncertainty(pred_probs)
+            pred_probs, _, _, _ = self.model.calc_uncertainty(pred_probs)
             pred_probs = pred_probs.numpy()
         logs[f"{self.name}_csi"] = self.mean_csi(pred_probs)
         true_labels = np.argmax(self.y, 1)
