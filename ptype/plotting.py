@@ -9,6 +9,7 @@ import pandas as pd
 import numpy as np
 import xarray as xr
 from sklearn.metrics import confusion_matrix
+from scipy.ndimage import gaussian_filter
 
 from cartopy import crs as ccrs
 from cartopy import feature as cfeature
@@ -44,6 +45,10 @@ def get_tle_files(base_path, valid_time, n_members=1):
 def load_data(files, variables):
     '''
     Load ptype files with xarray and pre process before use
+
+    Arguments:
+        files (list): list of files to open
+        variables (list): list of variables to keep netcdf
     '''
     ptypes = ['snow', 'rain', 'frzr', 'icep']
     def process(ds):
@@ -56,7 +61,7 @@ def load_data(files, variables):
         ds = ds[variables]
         precip_sum = ds[['crain', 'csnow', 'cicep', 'cfrzr']].to_array().sum(dim='variable')
         for ptype in ptypes:
-            ds[f'ML_c{ptype}'] = xr.where(precip_sum >= 1, x=ds[f"ML_c{ptype}"], y=np.nan)
+            ds[f'ML_c{ptype}'] = xr.where((precip_sum >= 1) & (ds[f'ML_c{ptype}'] == 1), x=ds[f"ML_c{ptype}"], y=np.nan)  # mask where there's precip and if the ptype is 1
             ds[f'ML_{ptype}'] = xr.where(precip_sum >= 1, x=ds[f"ML_{ptype}"], y=np.nan)
             ds[f'ML_{ptype}_epi'] = xr.where(precip_sum >= 1, x=ds[f"ML_{ptype}_epi"], y=np.nan)
             ds[f'ML_{ptype}_ale'] = xr.where(precip_sum >= 1, x=ds[f"ML_{ptype}_ale"], y=np.nan)
@@ -76,11 +81,16 @@ def load_data(files, variables):
         way, however, the classification is based on max proportion of HRRR predictions across ptypes.
         '''
         ds = ds[variables]
+        vars = []
+        
         precip_sum = ds[['crain', 'csnow', 'cicep', 'cfrzr']].to_array().sum(dim='variable')
         for ptype in ptypes:
             ds[f'ML_{ptype}'] = xr.where(precip_sum >= 1, x=ds[f'ML_{ptype}'], y=0) 
             ds[f'ML_{ptype}_epi'] = xr.where(precip_sum >= 1, x=ds[f"ML_{ptype}_epi"], y=0)
             ds[f'ML_{ptype}_ale'] = xr.where(precip_sum >= 1, x=ds[f"ML_{ptype}_ale"], y=0)
+            vars.append(f'ML_{ptype}')
+            vars.append(f'ML_{ptype}_epi')
+            vars.append(f'ML_{ptype}_ale')
 
         ptype_hier = ['frzr', 'icep', 'snow', 'rain']
         concat = xr.concat([ds[f'ML_{ptype}'] for ptype in ptype_hier], dim='ptype')
@@ -92,10 +102,49 @@ def load_data(files, variables):
         max_idx_tle = concat_hrrr_tle.argmax(dim='ptype')
 
         for i, ptype in enumerate(ptype_hier):
-            ds[f'ML_c{ptype}'] = xr.where(max_idx == i, 1, np.nan) # set categorical values
-            ds[ptype] = ds[f'ML_c{ptype}'] * ds[f'ML_{ptype}'] # set categorical scaled by probability
+            ds[f'ML_c{ptype}'] = xr.where(max_idx == i, 1, np.nan)  # set categorical values
+            ds[ptype] = ds[f'ML_c{ptype}'] * ds[f'ML_{ptype}']  # set categorical scaled by probability
             ds[f'c{ptype}'] = xr.where((max_idx_tle == i) & (concat_hrrr_tle[i] != 0), concat_hrrr_tle[i], np.nan)
-        ds = ds.mean("time").apply(lambda x: x.where(x != 0, np.nan)) # average and set 0 to nan in one line
+            vars.append(f'ML_c{ptype}')
+            vars.append(f'c{ptype}')
+            vars.append(ptype)
+
+        ds = ds.mean("time")  # mean across time for all variables
+        mask = precip_sum.mean("time") <= 0  # create mask 
+        
+        ds_changed = ds[vars].where(~mask) # mask the selected vars where there is precip
+        ds = ds.update(ds_changed)
+        return ds
+
+
+        ds = ds[variables]
+        vars = []
+        precip_sum = ds[['crain', 'csnow', 'cicep', 'cfrzr']].to_array().sum(dim='variable')
+        for ptype in ptypes:
+            ds[f'ML_{ptype}'] = xr.where(precip_sum >= 1, x=ds[f'ML_{ptype}'], y=0) 
+            ds[f'ML_{ptype}_epi'] = xr.where(precip_sum >= 1, x=ds[f"ML_{ptype}_epi"], y=0)
+            ds[f'ML_{ptype}_ale'] = xr.where(precip_sum >= 1, x=ds[f"ML_{ptype}_ale"], y=0)
+            vars.append(f'ML_{ptype}')
+            vars.append(f'ML_{ptype}_epi')
+            vars.append(f'ML_{ptype}_ale')
+        ptype_hier = ['frzr', 'icep', 'snow', 'rain']
+        concat = xr.concat([ds[f'ML_{ptype}'] for ptype in ptype_hier], dim='ptype')
+        concat_tle = concat.mean("time")
+        max_idx = concat_tle.argmax(dim='ptype')
+        concat_hrrr = xr.concat([ds[f'c{ptype}'] for ptype in ptype_hier], dim='ptype')
+        concat_hrrr_tle = concat_hrrr.mean("time")
+        max_idx_tle = concat_hrrr_tle.argmax(dim='ptype')
+        for i, ptype in enumerate(ptype_hier):
+            ds[f'ML_c{ptype}'] = xr.where(max_idx == i, 1, np.nan)  # set categorical values
+            ds[ptype] = ds[f'ML_c{ptype}'] * ds[f'ML_{ptype}']  # set categorical scaled by probability
+            ds[f'c{ptype}'] = xr.where((max_idx_tle == i) & (concat_hrrr_tle[i] != 0), concat_hrrr_tle[i], np.nan)
+            vars.append(f'ML_c{ptype}')
+            vars.append(f'c{ptype}')
+            vars.append(ptype)
+        #ds = ds[vars].mean("time").apply(lambda x: x.where(x != 0, np.nan))  # average and set 0 to nan in one line
+        ds = ds.mean("time")
+        ds_changed = ds[vars].apply(lambda x: x.where(x != 0, np.nan)) # only mean the selected variables
+        ds = ds.update(ds_changed)
         return ds
         
     if len(files) == 1:
@@ -107,7 +156,7 @@ def load_data(files, variables):
         return ds
     
 
-def plot_hrrr_ptype(ds, cmap=['Greens', 'Blues', 'Reds', 'Greys'], ptypes=['snow', 'rain', 'frzr', 'icep'], extent=[-108, -91, 37, 47.5]):
+def plot_hrrr_ptype(ds, cmap=['Greens', 'Blues', 'Reds', 'Greys'], ptypes=['rain', 'snow', 'frzr', 'icep'], extent=[-108, -91, 37, 47.5]):
     '''plot hrrr precip categorizations'''
     projection = ccrs.LambertConformal(central_longitude=-97.5, standard_parallels=(38.5, 38.5))
     fig, ax = plt.subplots(figsize=(7, 7), subplot_kw={'projection': projection})
@@ -122,7 +171,7 @@ def plot_hrrr_ptype(ds, cmap=['Greens', 'Blues', 'Reds', 'Greys'], ptypes=['snow
     return ax
     
 
-def plot_ptype(ds, ptype=None, cmap=['Greens', 'Blues', 'Reds', 'Greys'], ptypes=['snow', 'rain', 'frzr', 'icep'], extent=[-108, -91, 37, 47.5]):
+def plot_ptype(ds, ptype=None, cmap=['Greens', 'Blues', 'Reds', 'Greys'], ptypes=['rain', 'snow', 'frzr', 'icep'], extent=[-108, -91, 37, 47.5]):
     '''plots probabilities of each precipitation type based on the type with maximum probability'''
     projection = ccrs.LambertConformal(central_longitude=-97.5, standard_parallels=(38.5, 38.5))
     fig, ax = plt.subplots(figsize=(7, 7), subplot_kw={'projection': projection})
@@ -200,11 +249,12 @@ def plot_temp(ds, base_plot, ptype=None, **kwargs):
     lat = ds['latitude']
     lon = ds['longitude']
     temp_data = ds['t2m'] - 273.15  # Convert from Kelvin to Celsius
+    smoothed_temp = gaussian_filter(temp_data, sigma=4)
     if isinstance(ax, np.ndarray):
         for a in ax:
-            contour(a, lon, lat, temp_data)
+            contour_temp(a, lon, lat, smoothed_temp)
     else:
-        contour(ax, lon, lat, temp_data)
+        contour_temp(ax, lon, lat, smoothed_temp)
     return ax
     
 
@@ -214,22 +264,46 @@ def plot_dpt(ds, base_plot, ptype=None, **kwargs):
     lat = ds['latitude']
     lon = ds['longitude']
     dpt_data = ds['d2m'] - 273.15  # Convert from Kelvin to Celsius
+    smoothed_dpt = gaussian_filter(dpt_data, sigma=4)
     
     if isinstance(ax, np.ndarray):
         for a in ax:
-            contour(a, lon, lat, dpt_data)
+            contour_temp(a, lon, lat, smoothed_dpt)
     else:
-        contour(ax, lon, lat, dpt_data)
+        contour_temp(ax, lon, lat, smoothed_dpt)
     return ax
 
 
+def contour_temp(ax, lon, lat, data):
+    min = np.nanmin(data)
+    max = np.nanmax(data)
+    levels = np.arange(np.floor(min), np.ceil(max), 2)  # Contours at every 2 degrees
+    
+    # Create contour levels for positive and negative temperatures separately
+    pos_levels = levels[levels > 0]
+    neg_levels = levels[levels < 0]
+    
+    # Plot positive temperature contours
+    if len(pos_levels) > 0:
+        pos_contours = ax.contour(lon, lat, data, levels=pos_levels, transform=ccrs.PlateCarree(), cmap='autumn_r', linewidths=1)
+        ax.clabel(pos_contours, fontsize=7, colors='black')
+    
+    # Plot negative temperature contours with dashed lines
+    if len(neg_levels) > 0:
+        neg_contours = ax.contour(lon, lat, data, levels=neg_levels, transform=ccrs.PlateCarree(), cmap='cool_r', linewidths=1, linestyles='dashed')
+        ax.clabel(neg_contours, fontsize=7, colors='black')
+
+    # Plot zero-degree line as dashed line
+    zero_contour = ax.contour(lon, lat, data, levels=[0], transform=ccrs.PlateCarree(), colors='black', linestyles='dashed', linewidths=1)
+    ax.clabel(zero_contour, fmt='%d', colors='black', fontsize=7)
+
+    return ax
+
 def contour(ax, lon, lat, data):
     contours = ax.contour(lon, lat, data, transform=ccrs.PlateCarree(), levels=10)
-    #zero_cel = ax.contour(lon, lat, dpt_data, transform=ccrs.PlateCarree(), levels=[0], colors='black', linewidths=2)
-    ax.clabel(contours, fontsize=10, colors='black')
-    #cbar = plt.colorbar(contours, orientation="horizontal", fraction=0.15, pad=0.025)
-    #cbar.set_label('Dew Pt Temperature (°C)')
-
+    ax.clabel(contours, fontsize=7, colors='black')
+    return ax
+    
 
 def plot_sp(ds, base_plot, ptype=None, **kwargs):
     '''plot surface pressure contours on top of base plot'''
@@ -237,12 +311,13 @@ def plot_sp(ds, base_plot, ptype=None, **kwargs):
     lat = ds['latitude']
     lon = ds['longitude']
     sp_data = ds['sp']
+    smoothed_sp = gaussian_filter(sp_data, sigma=3)
 
     if isinstance(ax, np.ndarray):
         for a in ax:
-            contour(a, lon, lat, sp_data)
+            contour(a, lon, lat, smoothed_sp)
     else:
-        contour(ax, lon, lat, sp_data)
+        contour(ax, lon, lat, smoothed_sp)
     return ax
 
 
