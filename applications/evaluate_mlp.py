@@ -57,7 +57,7 @@ def evaluate(conf, reevaluate=False, data_split=0, mc_forward_passes=0):
         for name in data.keys():
             x = scaled_data[f"{name}_x"]
             if use_uncertainty:
-                pred_probs, u, ale, epi = mlp.predict_uncertainty(x)
+                pred_probs, u, ale, epi = mlp.predict(x, return_uncertainties=True, batch_size=10000)
                 pred_probs = pred_probs.numpy()
                 u = u.numpy()
                 ale = ale.numpy()
@@ -212,8 +212,8 @@ def evaluate(conf, reevaluate=False, data_split=0, mc_forward_passes=0):
     for name in data.keys():
         rocs = []
         for i in range(len(output_features)):
-            forecasts = data[name]["pred_conf"]
             obs = np.where(data[name]["true_label"] == i, 1, 0)
+            forecasts = data[name][f"pred_conf{i+1}"]
             roc = DistributedROC(
                 thresholds=np.arange(0.0, 1.01, 0.01), obs_threshold=0.5
             )

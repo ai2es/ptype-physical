@@ -120,7 +120,7 @@ class DenseNeuralNetwork(object):
             inputs (int): Number of input predictor variables
             outputs (int): Number of output predictor variables
         """
-        if self.activation == "leaky":
+        if self.activation == "leaky_relu":
             self.activation = LeakyReLU()
 
         if self.kernel_reg == "l1":

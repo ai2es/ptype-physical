@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from ptype.callbacks import MetricsCallback
 from ptype.data import load_ptype_uq, preprocess_data
-from pytpe.trainer import trainer
+from ptype.trainer import trainer
 from mlguess.keras.callbacks import get_callbacks
 from mlguess.keras.models import CategoricalDNN
 from mlguess.pbs import launch_pbs_jobs
