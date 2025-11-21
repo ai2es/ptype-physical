@@ -1,4 +1,4 @@
-
+from metpy.calc import wet_bulb_temperature, relative_humidity_from_dewpoint
 import numpy as np
 
 
@@ -92,9 +92,8 @@ def bourgouin_ip_frzr(t_ca, t_wa):
 def calc_bourgouin_ptype(t_profile, h_profile):
 
     temp_profile, height_profile = add_zero_crossings(t_profile, h_profile)
-    NA_list, PA_list, CT, WT, min_C, max_C, max_cross_m, min_cross_m, sfc = calc_sounding_stats(temp_profile, height_profile)
-    NA = np.abs(np.sum(NA_list))
-    PA = np.sum(PA_list)
+    metrics = calc_sounding_stats(temp_profile, height_profile)
+    NA, PA, CT, WT, min_C, max_C, max_cross_m, min_cross_m, sfc = metric.values()
 
 
     n_crossings = np.where(temp_profile == 0, 1, 0).sum()
@@ -135,9 +134,8 @@ def calc_modified_bourgouin_ptype(t_profile, td_profile, twb_profile, h_profile)
 
     prob_ice = calc_prob_ice(t_profile, td_profile)
     wb_profile, height_profile = add_zero_crossings(twb_profile, h_profile)
-    NA_list, PA_list, CT, WT, min_C, max_C, max_cross_m, min_cross_m, sfc = calc_sounding_stats(wb_profile, height_profile)
-    NA = np.abs(np.sum(NA_list))
-    PA = np.sum(PA_list)
+    metrics = calc_sounding_stats(wb_profile, height_profile)
+    NA, PA, CT, WT, min_C, max_C, max_cross_m, min_cross_m, sfc = metrics.values()
     prob_snow_i = 1540 * np.exp(-(0.29 * PA))
     prob_snow = (prob_ice / 100) * prob_snow_i
     if PA > 0:
@@ -150,15 +148,11 @@ def calc_modified_bourgouin_ptype(t_profile, td_profile, twb_profile, h_profile)
         prob_frzr_i = prob_frzr_i * 0.2 * PA
     prob_frzr = (100 - prob_ice) + ((prob_ice / 100) * prob_frzr_i)
     
-    ### NEEEDS ATTENTION
     if sfc > 0:
         prob_rain = prob_frzr
         prob_frzr = 0
     else:
         prob_rain = 0
-
-    # ptypes = np.clip(np.array([prob_rain, prob_snow, prob_icep, prob_frzr]), a_min=0, a_max=100) / 100
-    # ptypes = ptypes / np.sum(ptypes)
 
     ptypes = softmax(np.array([prob_rain, prob_snow, prob_icep, prob_frzr]) / 100)
     cat_pred = np.argwhere(ptypes==np.max(ptypes)).flatten()[-1]
