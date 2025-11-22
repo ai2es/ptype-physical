@@ -1,14 +1,10 @@
-import yaml, glob
-import pandas as pd
-import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix
-from sklearn.utils.multiclass import unique_labels
 
-from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.callbacks import Callback, ModelCheckpoint, CSVLogger, EarlyStopping
-from tensorflow.python.keras.callbacks import ReduceLROnPlateau, LearningRateScheduler
+from keras import backend as K
+from keras.callbacks import Callback, ModelCheckpoint, CSVLogger, EarlyStopping
+from keras.callbacks import ReduceLROnPlateau
 from typing import List, Dict
 import logging
 

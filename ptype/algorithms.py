@@ -1,6 +1,6 @@
 from metpy.calc import relative_humidity_from_dewpoint
 import numpy as np
-
+from metpy.units import units
 
 def add_zero_crossings(profile, heights):
     
@@ -55,7 +55,7 @@ def calc_sounding_stats(profile, heights):
     for i in range(upper_bound_index):
         if (profile[i] == 0):
 
-            energy = np.trapz(GRAVITY * (profile[low_i:i+1]/FREEZING_K) , heights[low_i:i+1])
+            energy = np.trapezoid(GRAVITY * (profile[low_i:i+1]/FREEZING_K) , heights[low_i:i+1])
             if energy <= 0:
                 cold_area.append(energy)
                 cold_thickness += heights[i] - heights[low_i]
@@ -90,7 +90,7 @@ def calc_bourgouin_ptype(t_profile, h_profile):
 
     temp_profile, height_profile = add_zero_crossings(t_profile, h_profile)
     metrics = calc_sounding_stats(temp_profile, height_profile)
-    NA, PA, CT, WT, min_C, max_C, max_cross_m, min_cross_m, sfc = metric.values()
+    NA, PA, CT, WT, min_C, max_C, max_cross_m, min_cross_m, sfc = metrics.values()
 
 
     n_crossings = np.where(temp_profile == 0, 1, 0).sum()
@@ -117,7 +117,7 @@ def calc_bourgouin_ptype(t_profile, h_profile):
             
     if n_crossings >= 3:
         
-        if PA_list[-1] < 2:
+        if PA[-1] < 2:
 
             if sfc >= 0:
                 return 0
@@ -212,6 +212,6 @@ def get_layer_indices(arr, min_length=5):
 
 
 def softmax(x):
-    """Compute softmax values for each sets of scores in x."""
+    """Compute softmax values for each set of scores in x."""
     e_x = np.exp(x - np.max(x))
     return e_x / e_x.sum()
