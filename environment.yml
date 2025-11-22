@@ -16,7 +16,6 @@ dependencies:
   - pytest
   - distributed
   - pyproj
-  - jupyter
   - cartopy
   - tqdm
   - sphinx
@@ -28,15 +27,12 @@ dependencies:
   - herbie-data
   - cfgrib
   - numba
-  - h5netcdf 
-  - ca-certificates
-  - certifi
-  - openssl
+  - h5netcdf
   - xhistogram
   - pip:
     - pyarrow
     - keras
-    - torch
+    - torch --index-url https://download.pytorch.org/whl/cpu
     - hagelslag
     - echo-opt
     - miles-guess
