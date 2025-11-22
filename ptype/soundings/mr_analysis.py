@@ -39,7 +39,7 @@ class SoundingQuery:
             return ds[f"""num_obs_{vartype}"""].sum(
                 dim=("case_study_day", "step", "init_hr")
             )
-        return ds[f"""num_obs"""].sum(dim=("case_study_day", "step", "init_hr"))
+        return ds["""num_obs"""].sum(dim=("case_study_day", "step", "init_hr"))
 
     def query(self, predtypes, variables, stats, sel={}):
         # code to change single inputs to a list

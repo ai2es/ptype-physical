@@ -1,11 +1,10 @@
 from echo.src.base_objective import BaseObjective
 from echo.src.trial_suggest import trial_suggest_loader
-from tensorflow.keras import backend as K
-from pytpe.trainer import trainer
+from ptype.trainer import trainer
 import logging 
 import optuna
 import gc
-
+import keras
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +16,7 @@ class Objective(BaseObjective):
         BaseObjective.__init__(self, config, metric)
 
     def train(self, trial, conf):
-        K.clear_session()
+        keras.backend.clear_session()
         gc.collect()
         conf["ensemble"]["n_splits"] = 1
         if "CSVLogger" in conf["callbacks"]:

@@ -1,36 +1,26 @@
 import glob
 import os
-import yaml
 import pandas as pd
-from sklearn.model_selection import train_test_split, GroupShuffleSplit
-from sklearn.preprocessing import StandardScaler
 import tqdm
 
 import numpy as np
-import tensorflow as tf
-import xarray as xr
 
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
 import matplotlib.colors
-from matplotlib import cm
-import utils
-import time
-import random
-
+import keras
+from mlguess.keras.losses import evidential_cat_loss
 
 from cartopy import crs as ccrs
 from cartopy import feature as cfeature
 import imageio
-from PIL import Image
+
 from pathlib import Path
-from datetime import datetime, timedelta
-from scipy.ndimage.filters import gaussian_filter
+from datetime import datetime
 
 import xarray as xr
 from scipy.ndimage.filters import gaussian_filter
 
-import matplotlib.colors
 
 # Code based on https://unidata.github.io/MetPy/latest/examples/Four_Panel_Map.html 
 def plot_background(ax, bbox):
@@ -61,7 +51,7 @@ def full_rap_apply(date, time, model_loc, means, stdevs, preds_save_loc, rap_loc
     stdevs = np.load(stdevs)
     input = ((input.reshape(-1, 268) - means) / stdevs).reshape(451, 337, 268)
 
-    model = tf.keras.models.load_model(model_loc)
+    model = keras.models.load_model(model_loc, custom_objects=dict(loss=evidential_cat_loss))
 
     # Row-Wise Traversal
     preds = np.expand_dims(model.predict(input[0, :, :]), axis=0)
@@ -76,10 +66,37 @@ def full_rap_apply(date, time, model_loc, means, stdevs, preds_save_loc, rap_loc
 
 
 def full_rap_map(date, time, preds_loc, map_save_loc, wind, lvl, ptypewise=True, rap_loc="/glade/p/cisl/aiml/conv_risk_intel/rap_ncei_height", img_format="png", res="50m"):
-    '''
-    
-    '''
+    """
+    Generates various maps and visualizations based on mPING forecasts, RAP weather
+    data, and predictions for a specific date and time, providing a detailed view
+    of precipitation-type probabilities and related meteorological data.
 
+    Args:
+        date (str): Date in the format 'YYYYMMDD' for which the maps are generated.
+        time (str): Time in the format 'HHMM' (UTC) for which the maps are generated.
+        preds_loc (str): Location or path of the prediction dataset file in NetCDF format.
+        map_save_loc (str): Directory path to save the generated maps.
+        wind (bool): If True, plots wind barbs using RAP UGRD and VGRD data.
+        lvl (int): Index of the vertical level for retrieving weather-related data,
+                   such as temperature and wind, from RAP.
+        ptypewise (bool, optional): Indicates whether to generate individual maps for
+                                    each precipitation type (True) or only a combined
+                                    majority map (False). Defaults to True.
+        rap_loc (str, optional): Directory path that contains RAP NCEI height datasets.
+                                 Defaults to "/glade/p/cisl/aiml/conv_risk_intel/rap_ncei_height".
+        img_format (str, optional): Format to save maps (e.g., 'png', 'jpg'). Defaults to "png".
+        res (str, optional): Resolution for cartographic features (e.g., "50m", "110m").
+                             Defaults to "50m".
+
+    Raises:
+        TypeError: If any input arguments are provided with invalid data types.
+        FileNotFoundError: If the specified path(s) to predictions or RAP data are invalid.
+        ValueError: If the provided date/time does not match the available data.
+
+    Returns:
+        None: The function generates and saves maps to the specified location but
+              does not return any value.
+    """
     preds_data = xr.open_dataset(preds_loc)
     preds = preds_data["mlp_preds"].values
     
@@ -237,7 +254,7 @@ def full_rap_gif(starttime, endtime, model_loc, means, stdevs, preds_save_loc, m
         full_rap_map(date, time, f"{preds_save_loc}/{date}_{time}_preds.nc", map_save_loc, wind, lvl, ptypewise)
 
     image_path = Path(map_save_loc)
-    images = sorted(list(image_path.glob(f'maj_rap_pred_*.png')))
+    images = sorted(list(image_path.glob('maj_rap_pred_*.png')))
     image_list = []
     for file_name in images:
         image_list.append(imageio.imread(file_name))

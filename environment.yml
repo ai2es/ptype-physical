@@ -2,7 +2,7 @@ name: ptype
 channels:
   - conda-forge
 dependencies:
-  - python=3.10
+  - python=3.11
   - optuna
   - pip
   - numpy
@@ -10,47 +10,33 @@ dependencies:
   - matplotlib
   - seaborn
   - xarray
-  - netcdf4
-  - dask
   - pandas
   - scikit-learn
   - pyyaml
   - pytest
   - distributed
   - pyproj
-  - jupyter
-  - jupyterlab
   - cartopy
   - tqdm
   - sphinx
   - numba
   - cython
-  - flake8
+  - ruff
   - requests
   - metpy
   - herbie-data
-  - metpy
   - cfgrib
-  - yaml
   - numba
-  - dask-jobqueue
-  - h5netcdf 
-  - ca-certificates
-  - certifi
-  - openssl
+  - h5netcdf
   - xhistogram
-  - black
   - pip:
     - pyarrow
-    - tensorflow
-    - tensorflow-probability
-    - tensorrt
+    - keras
+    - torch --index-url https://download.pytorch.org/whl/cpu
     - hagelslag
-    - imblearn
-    - git+https://github.com/NCAR/echo-opt
-    - git+https://github.com/ai2es/evidential.git
-    - git+https://github.com/ai2es/miles-guess.git
+    - echo-opt
+    - miles-guess
     - bridgescaler
     - zarr
-    - .
+    - -e .
 

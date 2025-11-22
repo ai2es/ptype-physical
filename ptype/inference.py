@@ -12,8 +12,9 @@ from numba import jit
 import glob
 import zarr
 import pygrib
-from pyproj import Proj, CRS, Transformer
+from pyproj import Proj, CRS
 from keras.models import load_model
+
 
 def df_flatten(ds, varsP, vertical_level_name='isobaricInhPa'):
     """  Split pressure level variables by pressure level, reassign and return as flattened Dataframe.
@@ -77,6 +78,7 @@ def load_data(var_dict, file, model, extent, drop):
     """
     Load variables from grib file, flatten pressure variables and convert to DataFrame. Supports "gfs", "rap", "hrrr"
     and "nam" models.
+
     Args:
         var_dict: Dictionary of variables to process. Requires "isobaricInPa", "surface", and "heightAboveGround"
         file: Path to grib file.
@@ -149,6 +151,7 @@ def get_subset(nwp_data, extent):
     """
     Subset data by the given extent by selecting all points that fall between the grid cells closest to the southwest
     and north east lon-lat coordinates specified in extent.
+
     Args:
         nwp_data: Xr.dataset of NWP data
         extent: List of coordinates for subsetting (lon_min, lon_max, lat_min, lat_max)
@@ -192,6 +195,7 @@ def subset_extent(nwp_data, extent, data_proj=None):
 def add_coord_data(file_path, grib_data, extent):
     """
     Add cf-style projection information and projection coordinates.
+
     Args:
         file_path (str): Path to grib2 file
         grib_data (xr.Dataset): Dataset to add coordinate information to
@@ -233,6 +237,7 @@ def add_coord_data(file_path, grib_data, extent):
 def convert_and_interpolate(data, surface_data, pressure_levels, height_levels, variables):
     """
     Convert Pressure level data to height above surface and interpolate data across specified height levels.
+
     Args:
         data: Pandas DataFrame of flattened pressure level data.
         surface_data: Pandas DataFrame of flattened surface data.
@@ -281,6 +286,7 @@ def interpolate(x, y, height_levels):
 def transform_data(input_data, transformer, input_features):
     """
     Transform data for input into ML model.
+
     Args:
         input_data: Pandas Dataframe of input data
         transformer: Bridgescaler object used to fit data.
@@ -298,6 +304,7 @@ def transform_data(input_data, transformer, input_features):
 def load_saved_model(model_path, scaler_path):
     """
     Load ML model and bridgescaler object.
+
     Args:
         model_path: Path to ML model.
 
@@ -316,6 +323,7 @@ def grid_predictions(data, predictions, interp_df=None, interpolated_pl=None, va
                      add_interp_data=False, evidential=False):
     """
     Populate gridded xarray dataset with ML probabilities and categorical predictions as separate variables.
+
     Args:
         data: Xarray dataset of input data.
         preds: Pandas Dataframe of ML predictions.
@@ -329,7 +337,7 @@ def grid_predictions(data, predictions, interp_df=None, interpolated_pl=None, va
         ptype = probabilities.argmax(axis=1).reshape(-1, 1)
         u = predictions[1].numpy().reshape(data['y'].size, data['x'].size)
         data['ML_u'] = (['y', 'x'], u.astype('float32'))
-        data[f"ML_u"].attrs = {"Description": f"Evidential Uncertainty (Dempster-Shafer Theory)"}
+        data["ML_u"].attrs = {"Description": "Evidential Uncertainty (Dempster-Shafer Theory)"}
         ale = predictions[2].numpy().reshape(data['y'].size, data['x'].size, probabilities.shape[-1])
         epi = predictions[3].numpy().reshape(data['y'].size, data['x'].size, probabilities.shape[-1])
         for i, (var, v) in enumerate(zip(["Rain", "Snow", "Ice Pellets", "Freezing Rain"],
@@ -382,6 +390,7 @@ def grid_predictions(data, predictions, interp_df=None, interpolated_pl=None, va
 def save_data(dataset, out_path, model_name, forecast_hour, save_format):
     """
     Save ML predictions and surface data as netCDf file.
+
     Args:
         dataset: Xarray dataset with ML predictions and surface data.
         out_path: Path to save data.
@@ -416,6 +425,7 @@ def save_data(dataset, out_path, model_name, forecast_hour, save_format):
 def add_interp_gridded(nwp_data, interp_data, height_levels, variables):
     """
     Convert height interpolated data to xarray format and merge with main dataset.
+
     Args:
         nwp_data (xr.Dataset): Main Numerical Weather Prediciton dataset with ML preds
         interp_data (np.array): Numpy array of height interpolated values for ML input

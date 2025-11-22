@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ptype-physical"
+authors = [{name = "University Corporation for Atmospheric Research", email = "miles@ucar.edu"}]
+readme = "README.md"
+license = {file = "LICENSE"}
+dynamic = ["version"]
+requires-python = ">=3.8"
+dependencies = [
+    "numpy",
+    "scipy",
+    "matplotlib",
+    "cartopy",
+    "pandas",
+    "keras",
+    "torch",
+    "xarray",
+    "h5netcdf",
+    "zarr",
+    "pyarrow",
+    "scikit-learn",
+    "tqdm",
+    "miles-guess",
+    "bridgescaler",
+    "hagelslag",
+    "metpy",
+    "joblib",
+    "herbie-data",
+    "seaborn",
+    "geopandas"
+            ]
+[tool.setuptools]
+packages = ["ptype", "ptype.soundings"]
+
+[tool.setuptools_scm]
+version_file = "ptype/_version.py"
+
+[tool.ruff]
+target-version = "py311"
+src = ["ptype", "tests", "applications"]
+line-length = 180
+
+[tool.ruff.lint.per-file-ignores]
+"*.ipynb" = ["E402"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"

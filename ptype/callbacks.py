@@ -1,16 +1,15 @@
-from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.callbacks import (
+from keras import backend as K
+from keras.callbacks import (
     Callback,
     ModelCheckpoint,
     CSVLogger,
     EarlyStopping,
+    ReduceLROnPlateau
 )
-from tensorflow.python.keras.callbacks import ReduceLROnPlateau
 from sklearn.metrics import precision_recall_fscore_support, roc_auc_score
 from hagelslag.evaluation.ProbabilityMetrics import DistributedROC
 from typing import List, Dict
 import numpy as np
-import tensorflow as tf
 import logging
 import os
 

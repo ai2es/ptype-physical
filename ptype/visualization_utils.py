@@ -4,8 +4,6 @@
 Author: Eliot Kim
 Purpose: Visualization utilities for Winter P-Type Project.
 """
-
-
 import numpy as np
 import pandas as pd
 import os
@@ -100,7 +98,7 @@ def ptype_map(datatype, starttime, endtime, gifname,
     for d in time_range:
         df_area_time = df_area[df_area["datetime"] == d]
         print(d, df_area_time.shape)
-        fig = plt.figure(figsize=(18, 12))
+        plt.figure(figsize=(18, 12))
         ax = plt.subplot(1, 1, 1, projection=proj)
         ax.set_extent([coords[2], coords[3], coords[1], coords[0]])
         ax.add_feature(cfeature.LAND.with_scale(res))
@@ -179,7 +177,7 @@ def ptype_weather_map(datatype, starttime, endtime, gifname, imgsavepath="", gif
 
     # Combine desired data files into pandas Dataframe
     files = [filename for filename in arr if any(date in filename for date in day_range)]
-    weather_files = []
+
     df = pd.concat([pd.read_parquet(file) for file in tqdm.tqdm(files)])
 
     # Index Dataframe by desired mapping area

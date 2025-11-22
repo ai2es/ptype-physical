@@ -2,19 +2,11 @@ import os
 import sys
 import tqdm
 import yaml
-import pickle
 import shutil
 import logging
 import warnings
-import numpy as np
-import pandas as pd
-from ptype.callbacks import MetricsCallback
-from ptype.data import load_ptype_uq, preprocess_data
 from ptype.trainer import trainer
-from mlguess.keras.callbacks import get_callbacks
-from mlguess.keras.models import CategoricalDNN
 from mlguess.pbs import launch_pbs_jobs
-from bridgescaler import save_scaler
 from argparse import ArgumentParser
 
 warnings.filterwarnings("ignore")
