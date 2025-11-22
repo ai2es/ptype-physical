@@ -16,7 +16,6 @@ from cartopy import feature as cfeature
 
 import os
 from os.path import join
-from glob import glob
 
 
 def get_tle_files(base_path, valid_time, n_members=1):
@@ -31,7 +30,7 @@ def get_tle_files(base_path, valid_time, n_members=1):
     date = pd.to_datetime(valid_time)
     file_names = []
     if n_members == 1:
-        dt = date - pd.Timedelta(f"1h")
+        dt = date - pd.Timedelta("1h")
         date_str = f"MILES_ptype_hrrr_{dt.strftime('%Y-%m-%d_%H%M')}"
         return [join(base_path, dt.strftime("%Y%m%d"), dt.strftime("%H%M"), f"{date_str}_f01.nc")]
     for time_delta in range(n_members, 0, -1):
@@ -332,7 +331,7 @@ def ptype_hist(df, col, dataset, model_name, bins=None, save_location=None, tran
 
     transparent_fig only matters if saving out the figure. True or False are the options
     """
-    if not type(df) is pd.core.frame.DataFrame:
+    if type(df) is not pd.core.frame.DataFrame:
         raise TypeError("df needs to be a dataframe")
 
     ra = df[col][df["ra_percent"] > 0]

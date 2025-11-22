@@ -2,7 +2,7 @@ name: ptype
 channels:
   - conda-forge
 dependencies:
-  - python=3.10
+  - python=3.11
   - optuna
   - pip
   - numpy
@@ -10,8 +10,6 @@ dependencies:
   - matplotlib
   - seaborn
   - xarray
-  - netcdf4
-  - dask
   - pandas
   - scikit-learn
   - pyyaml
@@ -19,35 +17,28 @@ dependencies:
   - distributed
   - pyproj
   - jupyter
-  - jupyterlab
   - cartopy
   - tqdm
   - sphinx
   - numba
   - cython
-  - flake8
+  - ruff
   - requests
   - metpy
   - herbie-data
-  - metpy
   - cfgrib
-  - yaml
   - numba
-  - dask-jobqueue
   - h5netcdf 
   - ca-certificates
   - certifi
   - openssl
   - xhistogram
-  - black
   - pip:
     - pyarrow
-    - tensorflow
-    - tensorflow-probability
-    - tensorrt
+    - keras
+    - torch
     - hagelslag
-    - imblearn
-    - git+https://github.com/NCAR/echo-opt
+    - echo-opt
     - miles-guess
     - bridgescaler
     - zarr

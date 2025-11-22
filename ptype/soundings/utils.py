@@ -2,7 +2,6 @@ import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
 
-from metpy.plots import SkewT
 from metpy.calc import relative_humidity_from_dewpoint
 from metpy.units import units
 

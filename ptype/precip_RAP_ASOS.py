@@ -3,10 +3,9 @@ import sys
 import pickle
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 from datetime import datetime
 import xarray as xr
-from pyproj import CRS, Transformer, Proj
+from pyproj import Proj
 from scipy.spatial.distance import cdist
 from metpy.calc import dewpoint_from_relative_humidity
 from metpy.units import units

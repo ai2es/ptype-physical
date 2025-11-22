@@ -1,4 +1,4 @@
-from metpy.calc import wet_bulb_temperature, relative_humidity_from_dewpoint
+from metpy.calc import relative_humidity_from_dewpoint
 import numpy as np
 
 
@@ -22,10 +22,6 @@ def add_zero_crossings(profile, heights):
     return profile, heights
 
 
-
-import numpy as np
-
-
 def calc_sounding_stats(profile, heights):
 
     FREEZING_K = 273.15
@@ -35,6 +31,7 @@ def calc_sounding_stats(profile, heights):
     low_i, cold_thickness, warm_thickness = 0, 0, 0
     profile, heights = add_zero_crossings(profile, heights)
     surface = profile[0]
+    metrics = {}
     try:
         upper_bound_index = np.argwhere(profile==0).max() + 1 # get index of highest crossing where we no longer care about
         lower_bound_index = np.argwhere(profile==0).min()
@@ -67,7 +64,7 @@ def calc_sounding_stats(profile, heights):
                 warm_thickness += heights[i] - heights[low_i]
             low_i = i
 
-        metrics[cold_area] = np.sum(cold_area
+        metrics[cold_area] = np.sum(cold_area)
         metrics[warm_area] = np.sum(warm_area)
         metrics[cold_thickness] = cold_thickness
         metrics[warm_thickness] = warm_thickness

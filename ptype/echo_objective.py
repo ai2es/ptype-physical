@@ -1,7 +1,6 @@
 from echo.src.base_objective import BaseObjective
 from echo.src.trial_suggest import trial_suggest_loader
-from tensorflow.keras import backend as K
-from pytpe.trainer import trainer
+from ptype.trainer import trainer
 import logging 
 import optuna
 import gc

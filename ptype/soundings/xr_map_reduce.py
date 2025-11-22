@@ -31,7 +31,7 @@ def time_to_inithr(ds):
 def get_num_cpus():
     if "glade" in os.getcwd():
         num_cpus = subprocess.run(
-            f"qstat -f $PBS_JOBID | grep Resource_List.ncpus",
+            "qstat -f $PBS_JOBID | grep Resource_List.ncpus",
             shell=True,
             capture_output=True,
             encoding="utf-8",

@@ -12,6 +12,7 @@ import logging
 import subprocess
 import numpy as np
 import pandas as pd
+import keras
 
 from ptype.callbacks import MetricsCallback
 from pathlib import Path
@@ -26,11 +27,7 @@ from sklearn.model_selection import GroupShuffleSplit
 from sklearn.metrics import roc_auc_score, balanced_accuracy_score
 from sklearn.metrics import precision_recall_fscore_support
 
-import tensorflow as tf
-
 pd.options.mode.chained_assignment = None
-
-#tf.config.run_functions_eagerly(True)
 
 
 def train(conf, data, mc_forward_passes=0):
@@ -102,7 +99,7 @@ def train(conf, data, mc_forward_passes=0):
     training_log = pd.DataFrame.from_dict(history.history)
 
     del mlp
-    tf.keras.backend.clear_session()
+    keras.backend.clear_session()
     gc.collect()
 
     return training_log, results_dict
