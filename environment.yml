@@ -48,9 +48,8 @@ dependencies:
     - hagelslag
     - imblearn
     - git+https://github.com/NCAR/echo-opt
-    - git+https://github.com/ai2es/evidential.git
-    - git+https://github.com/ai2es/miles-guess.git
+    - miles-guess
     - bridgescaler
     - zarr
-    - .
+    - -e .
 
