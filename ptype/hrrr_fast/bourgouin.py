@@ -649,8 +649,62 @@ def _revised_column(t, td, tw, hgt, n, gen_depth, dry_depth, sat, dry, warm, ene
     return best
 
 
+# Levels whose temperature is at or below this value (degC) do not get the wet-bulb solve in
+# revised_bourgouin_from_sounding (when no wet-bulb output is requested).  See _tw_levels_needed.
+TW_SKIP_T_C = -0.5
+# The skip is only taken where the wet-bulb solve is known to be finite: pressure above this (Pa).
+TW_SKIP_MIN_P_PA = 2000.0
+
+
+@njit(cache=True, inline="always")
+def _tw_levels_needed(sounding, c, n):
+    """Number of levels, counted from the surface, for which column ``c`` needs the wet-bulb solve.
+
+    Why the remaining levels can be skipped without changing any output (bit for bit):
+
+    1. Tw <= T.  Physically the wet bulb lies between the dew point and the temperature.  Numerically,
+       ``columns._wet_bulb_scalar`` returns T exactly when Td >= T, and otherwise the LCL/moist-adiabat
+       path has an error of ~1e-5 degC (self-convergence 1.9e-5).  Measured on 40 M random float32
+       inputs (T -90..45 degC including +-1e-3 around 0, T - Td from 0 to 80 K including 1e-9..0.1,
+       p 20..1100 hPa): max(Tw - T) = 0 exactly, no NaN, and no float32 Tw > 0 where T <= 0
+       (``scratchpad/scripts/tw_bound.py``).  So a level with T <= TW_SKIP_T_C = -0.5 degC has
+       Tw <= -0.5 < 0, i.e. it is a freezing level (Q10: Tw <= 0 counts as freezing), with a margin
+       25,000 times the numerical error.
+    2. Let kT be the highest level with T > TW_SKIP_T_C (or a level that fails the safety test below),
+       and k* the highest level with Tw > 0.  By 1, k* <= kT.  The outputs use Tw only through
+       (a) ``tw[0] > 0`` (surface rule), (b) the melting layers (ME_all, ME_PL), which lie at or below
+       the crossing between k* and k* + 1, and (c) the freezing layers BELOW the highest warm layer
+       aloft (RE_FZRA, RE_PL), which also lie below k*.  Everything above level k* + 1 only extends
+       the topmost freezing layer, whose energy is never used.  Locating the crossing between k* and
+       k* + 1 needs Tw at k* + 1 <= kT + 1.  Hence Tw is computed exactly (same function, same
+       inputs, same float32 rounding) for levels 0..kT+1 and every piece and layer sum below that
+       point is formed with identical operations in identical order: ME, RE, the probabilities, the
+       class and the diagnostics are bit-identical.
+    3. Above kT + 1 the Tw slot is filled with T (<= -0.5 degC): a finite value <= 0, so no melting
+       layer appears and every piece merges into the unused top freezing layer.
+    4. A column with T <= -0.5 degC at every level needs no wet bulb at all (returns 0): all Tw < 0,
+       so ME = RE = 0 and the surface is not warm, exactly as with the computed Tw.
+    5. Validity: the original marks a column invalid when any Tw is non-finite.  A level is skipped only
+       if T, Td and p are finite and p > TW_SKIP_MIN_P_PA (20 hPa), where the solve is finite (no NaN in
+       the 40 M-point test, which went down to 20 hPa; analytically the Lambert-W argument lies in
+       [-1/e, 0) for 0 < RH <= 1, and p > e_s(T) since e_s(0 degC) = 611 Pa).  Any other level counts
+       as "needed", so the original NaN behaviour is kept.
+    """
+    k_need = -1
+    for k in range(n):
+        tk = np.float64(sounding[c, 0, k])
+        tdk = np.float64(sounding[c, 1, k])
+        pk = np.float64(sounding[c, 4, k]) * 100.0
+        safe = np.isfinite(tk) and np.isfinite(tdk) and np.isfinite(pk) and pk > TW_SKIP_MIN_P_PA
+        if not (safe and tk <= TW_SKIP_T_C):
+            k_need = k
+    if k_need < 0:
+        return 0
+    return min(n, k_need + 2)
+
+
 @njit(parallel=True, cache=True)
-def _revised_kernel(t, td, tw, sounding, use_sounding, hgt, gen_depth, dry_depth, probs_out, cls_out, diag_out, store_diag, tw_out, store_tw):
+def _revised_kernel(t, td, tw, sounding, use_sounding, hgt, gen_depth, dry_depth, probs_out, cls_out, diag_out, store_diag, tw_out, store_tw, skip_tw):
     if use_sounding:
         ncol = sounding.shape[0]
     else:
@@ -669,12 +723,21 @@ def _revised_kernel(t, td, tw, sounding, use_sounding, hgt, gen_depth, dry_depth
         diag = np.empty(N_DIAGNOSTICS, dtype=np.float64)
         for c in range(b * _BLOCK, min(ncol, (b + 1) * _BLOCK)):
             ok = True
+            # Number of levels (from the surface) that need the wet-bulb solve; see _tw_levels_needed.
+            n_tw = n
+            if use_sounding and skip_tw and not store_tw:
+                n_tw = _tw_levels_needed(sounding, c, n)
             for k in range(n):
                 if use_sounding:
                     tt[k] = sounding[c, 0, k]
                     dd[k] = sounding[c, 1, k]
-                    # float32 rounding: identical to passing a float32 Tw array to revised_bourgouin
-                    ww[k] = np.float32(_wet_bulb_scalar(tt[k], dd[k], np.float64(sounding[c, 4, k]) * 100.0))
+                    if k < n_tw:
+                        # float32 rounding: identical to passing a float32 Tw array to revised_bourgouin
+                        ww[k] = np.float32(_wet_bulb_scalar(tt[k], dd[k], np.float64(sounding[c, 4, k]) * 100.0))
+                    else:
+                        # Placeholder <= TW_SKIP_T_C < 0: the true Tw is <= 0 here and cannot change any
+                        # output (see _tw_levels_needed).  Finite by construction of the skip test.
+                        ww[k] = tt[k]
                     if store_tw:
                         tw_out[c, k] = ww[k]
                 else:
@@ -699,7 +762,7 @@ def _revised_kernel(t, td, tw, sounding, use_sounding, hgt, gen_depth, dry_depth
                     diag_out[c, m] = diag[m]
 
 
-def _revised_run(t, td, tw, sounding, hgt, return_diagnostics, return_wet_bulb):
+def _revised_run(t, td, tw, sounding, hgt, return_diagnostics, return_wet_bulb, skip_wet_bulb=True):
     use_sounding = sounding is not None
     hgt = np.ascontiguousarray(hgt, dtype=np.float64)
     if hgt.ndim != 1 or hgt.size < 2 or np.any(np.diff(hgt) <= 0):
@@ -723,7 +786,7 @@ def _revised_run(t, td, tw, sounding, hgt, return_diagnostics, return_wet_bulb):
     cls = np.empty(ncol, dtype=np.uint8)
     diag = np.empty((ncol, N_DIAGNOSTICS) if return_diagnostics else (1, 1), dtype=np.float32)
     tw_out = np.empty((ncol, hgt.size) if return_wet_bulb else (1, 1), dtype=np.float32)
-    _revised_kernel(t, td, tw, sounding, use_sounding, hgt, GENERATION_LAYER_DEPTH, DRY_LAYER_DEPTH, probs, cls, diag, return_diagnostics, tw_out, return_wet_bulb)
+    _revised_kernel(t, td, tw, sounding, use_sounding, hgt, GENERATION_LAYER_DEPTH, DRY_LAYER_DEPTH, probs, cls, diag, return_diagnostics, tw_out, return_wet_bulb, skip_wet_bulb)
     out = [probs, cls]
     if return_diagnostics:
         out.append(diag)
@@ -759,6 +822,9 @@ def revised_bourgouin_from_sounding(sounding, heights=NETWORK_HEIGHTS, return_di
 
     The wet-bulb temperature is computed per level inside the same parallel loop (rounded to float32,
     so the result equals :func:`revised_bourgouin` given ``columns.wet_bulb_temperature`` output).
+    Unless ``return_wet_bulb`` is True, the iterative wet-bulb solve is skipped on levels above the
+    level after the highest one with T > -0.5 degC; this does not change any output (the argument is
+    in ``_tw_levels_needed``; equivalence is tested on >= 200,000 profiles on 21 and 33 levels).
 
     Args:
         sounding: float32 ``(n_columns, 5, n_levels)`` from :func:`ptype.hrrr_fast.columns.build_soundings`.
@@ -770,3 +836,8 @@ def revised_bourgouin_from_sounding(sounding, heights=NETWORK_HEIGHTS, return_di
         ``(probs, cls[, diagnostics][, tw])``; see :func:`revised_bourgouin`.
     """
     return _revised_run(None, None, None, sounding, heights, return_diagnostics, return_wet_bulb)
+
+
+def _revised_bourgouin_from_sounding_full(sounding, heights=NETWORK_HEIGHTS, return_diagnostics=False):
+    """Reference path without the wet-bulb skip (Tw solved at every level); for equivalence tests."""
+    return _revised_run(None, None, None, sounding, heights, return_diagnostics, False, skip_wet_bulb=False)

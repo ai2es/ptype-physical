@@ -69,3 +69,51 @@ bulb. Synthetic class counts (not meaningful climatologically): 914000/847321/0/
 
 Not measured: real HRRR GRIB decode / I/O, memory peak, behaviour on Linux/x86 or other numba
 threading layers, and comparison against the old pandas pipeline's wall time.
+
+## 4. Revised Bourgouin: wet-bulb skip (exact optimisation)
+
+`revised_bourgouin_from_sounding` now solves the wet bulb only from the surface up to one level above
+the highest level with T > -0.5 °C (or any level where the skip's safety test fails). The other
+levels get T (≤ -0.5 °C) as a placeholder. The argument that this cannot change any output is in the
+`_tw_levels_needed` docstring:
+
+* Tw ≤ T. Measured on 40 M random float32 inputs: max(Tw − T) = 0, no NaN
+  (`scratchpad/scripts/tw_bound.py`).
+* Levels above the highest warm level plus one only extend the top freezing layer, whose energy is
+  never used.
+* A column with every level at T ≤ -0.5 °C needs no wet bulb.
+
+When `return_wet_bulb=True` every level is still solved. The unoptimised path is kept as
+`_revised_bourgouin_from_sounding_full` for the tests.
+
+**Equivalence.** `test_wet_bulb_skip_is_exact` runs 200,000 profiles for each case: 21 and 33 levels
+(0-8000 m), crossed with a cold mix (surface -14..10 °C) and a warm mix (5..30 °C). That includes
+T exactly 0 °C and exactly -0.5 °C. In every case the classes, probabilities and diagnostics are
+**bit-identical** (`assert_array_equal`). The benchmark below also compared outputs on all 1,905,141
+columns per case: identical in every row.
+
+**Timing** (1,905,141 columns, best of 2, Apple M4 Pro, other jobs running, load 7.4-16):
+
+| Levels | Mix | Threads | Before (s) | After (s) | Speed-up | Tw solved (fraction of levels) |
+|---:|---|---:|---:|---:|---:|---:|
+| 21 | cold | 1 | 14.679 | 3.412 | 4.3x | 0.183 |
+| 21 | cold | 14 | 1.512 | 0.353 | 4.3x | 0.183 |
+| 21 | warm | 1 | 14.634 | 10.933 | 1.3x | 0.734 |
+| 21 | warm | 14 | 1.443 | 1.118 | 1.3x | 0.734 |
+| 33 | cold | 1 | 21.780 | 4.060 | 5.4x | 0.127 |
+| 33 | cold | 14 | 2.127 | 0.408 | 5.2x | 0.127 |
+| 33 | warm | 1 | 21.859 | 12.694 | 1.7x | 0.535 |
+| 33 | warm | 14 | 2.168 | 1.236 | 1.8x | 0.535 |
+
+Profiles come from `make_profiles` in `tests/test_hrrr_fast_bourgouin.py` (synthetic, seed 7). They are not the
+`build_soundings` data of section 3, which is why the "before" time here (14.7 s for 21 levels)
+differs from the 10.3 s there; I did not investigate the cause. Script:
+`scratchpad/scripts/bench_skip.py`.
+
+**Considered and not applied:**
+
+* Re-using `exp(s + h)` and `exp(s + h/2)` between RK4 stages. Bit-identical, but no gain: 354 vs
+  356 ns per point, because LLVM already removes the duplicate.
+* Fusing `(T0/T)**k * exp(x)` into a single `exp(k ln(T0/T) + x)` in the saturation vapour pressure.
+  About 10 % faster (356 → 319 ns per point), but not bit-identical (max |ΔTw| 1.7e-13 °C), and it
+  needs a change to `columns.py` that would also alter `wet_bulb_temperature`. Not done.

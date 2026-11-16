@@ -35,6 +35,7 @@ import pytest
 from metpy.calc import relative_humidity_from_dewpoint, saturation_vapor_pressure
 from metpy.units import units
 from ptype.hrrr_fast.bourgouin import (
+    _revised_bourgouin_from_sounding_full,
     legacy_repo_bourgouin,
     legacy_repo_bourgouin_from_sounding,
     revised_bourgouin,
@@ -190,18 +191,19 @@ def ref_calc_modified_bourgouin_ptype(t_profile, td_profile, twb_profile, h_prof
 # ------------------------------------------------------------------------------------------------
 # Synthetic but realistic winter soundings.
 # ------------------------------------------------------------------------------------------------
-def make_profiles(n, seed=0):
+def make_profiles(n, seed=0, heights=NETWORK_HEIGHTS, tsfc_range=(-14.0, 10.0)):
     """Random winter-like T, Td (degC) and p (hPa) profiles on the 21 network heights.
 
     Mixes: surface temperature -14..+10 degC (3 % warm-season columns at 25..32 degC) with 2-8.5 K/km lapse rates; elevated warm noses
     (60 %, up to +12 K at 0.5-3 km) giving freezing rain / sleet structures; shallow surface cold
     pools (30 %); small oscillations (20 %) that create 3+ wet-bulb crossings; dew-point
     depressions from saturated to very dry, with dry slots in 50 % of columns; surface pressure
-    650-1045 hPa (high terrain to cold highs).
+    650-1045 hPa (high terrain to cold highs).  ``heights`` and ``tsfc_range`` (degC) allow other
+    grids (e.g. 0-8000 m) and warmer mixes.
     """
     rng = np.random.default_rng(seed)
-    z = NETWORK_HEIGHTS[np.newaxis, :]
-    tsfc = rng.uniform(-14, 10, (n, 1))
+    z = np.asarray(heights, dtype=np.float64)[np.newaxis, :]
+    tsfc = rng.uniform(tsfc_range[0], tsfc_range[1], (n, 1))
     lapse = rng.uniform(2.0, 8.5, (n, 1)) / 1000.0
     warm = rng.random((n, 1)) < 0.03  # a few warm-season columns with no 0 degC crossing below 5 km
     tsfc = np.where(warm, rng.uniform(25, 32, (n, 1)), tsfc)
@@ -213,7 +215,7 @@ def make_profiles(n, seed=0):
     t -= pool * np.exp(-z / rng.uniform(200, 800, (n, 1)))
     wiggle = (rng.random((n, 1)) < 0.2) * rng.uniform(0, 3, (n, 1))
     t += wiggle * np.sin(2 * np.pi * z / rng.uniform(800, 2000, (n, 1)) + rng.uniform(0, 2 * np.pi, (n, 1)))
-    dd = rng.uniform(0, 2, (n, 1)) * rng.random((n, 21)) + rng.exponential(1.0, (n, 1))
+    dd = rng.uniform(0, 2, (n, 1)) * rng.random((n, z.shape[1])) + rng.exponential(1.0, (n, 1))
     dry = rng.random((n, 1)) < 0.5
     z0 = rng.uniform(0, 4000, (n, 1))
     dd += dry * ((z >= z0) & (z <= z0 + rng.uniform(500, 3000, (n, 1)))) * rng.uniform(3, 25, (n, 1))
@@ -657,3 +659,27 @@ def test_eq6_zones(me):
     for re in np.linspace(hi, 600, 20)[1:]:
         p = probs_pct(100, me, re, me, re, False)
         assert p[2] >= p[3], (re, p)
+
+
+# ----- equivalence of the wet-bulb skip ----------------------------------------------------------
+DEEP_HEIGHTS = np.arange(0.0, 8001.0, 250.0)  # 33 levels
+
+
+@pytest.mark.parametrize("heights", [NETWORK_HEIGHTS, DEEP_HEIGHTS], ids=["21lev", "33lev"])
+@pytest.mark.parametrize("tsfc_range", [(-14.0, 10.0), (5.0, 30.0)], ids=["cold", "warm"])
+def test_wet_bulb_skip_is_exact(heights, tsfc_range):
+    """The optimised kernel (wet bulb only where it can matter) equals the full one bit for bit."""
+    n = 200_000
+    t, td, p = make_profiles(n, seed=123, heights=heights, tsfc_range=tsfc_range)
+    snd = np.zeros((n, 5, heights.size), np.float32)
+    snd[:, 0], snd[:, 1], snd[:, 4] = t, td, p
+    snd[:500, 0] = np.round(snd[:500, 0])  # exact 0 degC levels and T exactly at the skip edge region
+    snd[500:600, 0] = -0.5
+    pa, ca, da = _revised_bourgouin_from_sounding_full(snd, heights, return_diagnostics=True)
+    pb, cb, db = revised_bourgouin_from_sounding(snd, heights, return_diagnostics=True)
+    np.testing.assert_array_equal(ca, cb)
+    np.testing.assert_array_equal(pa, pb)
+    np.testing.assert_array_equal(da, db)
+    # the skip must still flag non-finite input
+    snd[0, 4, -1] = np.nan
+    assert revised_bourgouin_from_sounding(snd[:1], heights)[1][0] == 255
