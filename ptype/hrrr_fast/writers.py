@@ -54,13 +54,34 @@ chunk; with ``sharding=True`` all inner chunks of one hour live in one shard obj
 reads sharded arrays with range requests (``zarrita/src/codecs/sharding.ts``: suffix read of the index,
 then one range read per inner chunk; ``FetchStore`` issues a HEAD to learn the object size unless
 ``useSuffixRequest`` is set).
+
+Default sounding precision is 0.1 in every unit (int16, see :func:`default_sounding_encoding`). Values
+whose scaled integer would not fit the stored type are REJECTED with ``ValueError`` before anything is
+written (:func:`check_representable`), so a unit mistake (e.g. pressure in Pa) can neither wrap nor be
+clamped silently; NaN is stored as the reserved sentinel and reads back as NaN.
+
+Staging and finalized layout of the gridded store (S3 Standard-IA bills every object as >= 128 KiB)
+-------------------------------------------------------------------------------------------------
+The per-hour layout above is the STAGING layout: ideal for lock-free parallel writes, but one object per
+(array, level, hour), most of them far below 128 KiB (flags, prate, every coarse level). After all hours
+of a run are written, :func:`finalize_ptype_store` (one process) rewrites every data array into a Zarr v3
+SHARDED array whose single shard spans the whole ``forecast_hour`` dimension with inner chunks of one
+hour ``(1, ny_level, nx_level)``: one object per array per level per RUN. The site still reads one hour
+with one range request per array (plus the shard-index read). Staging lives AT the final path (so
+``create_ptype_store``/``write_ptype_hour`` keep their signatures); the finalized store is built in the
+sibling ``<name>.finalize-tmp`` and swapped in with two directory renames, after which ``path`` holds only
+final objects and is what gets uploaded. Group/root ``zarr.json`` attributes are copied unchanged except
+``hrrr_ptype.layout`` (``"staging"`` -> ``"finalized"``), which is what makes finalize idempotent.
 """
 
 from __future__ import annotations
 
 import math
+import os
+import shutil
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
@@ -71,13 +92,16 @@ __all__ = [
     "Aggregation",
     "VariableSpec",
     "block_reduce",
+    "check_representable",
     "coarsen_shapes",
     "create_ptype_store",
     "create_sounding_store",
     "default_ptype_variables",
     "default_sounding_encoding",
+    "finalize_ptype_store",
     "level_coords",
     "quantized_float",
+    "sounding_encoding",
     "sounding_grid_attrs",
     "write_ptype_hour",
     "write_sounding_hour",
@@ -154,6 +178,63 @@ def quantized_float(step: float, dtype: str = "uint8", offset: float = 0.0) -> l
     so = ScaleOffset(offset=offset, scale=scale_json) if offset else ScaleOffset(scale=scale_json)
     cv = CastValue(data_type=dtype, rounding="nearest-even", out_of_range="clamp", scalar_map={"encode": [("NaN", sentinel)], "decode": [(sentinel, "NaN")]})
     return [so, cv]
+
+
+def _quantizer(codecs: Sequence[Mapping[str, Any]]) -> tuple[float, float, np.dtype, int] | None:
+    """``(scale, offset, stored dtype, NaN sentinel)`` from an array's codec metadata, or None if not quantised."""
+    for c in codecs:
+        if c["name"] == "sharding_indexed":
+            return _quantizer(c["configuration"]["codecs"])
+    so = next((c for c in codecs if c["name"] == "scale_offset"), None)
+    cv = next((c for c in codecs if c["name"] == "cast_value"), None)
+    if so is None or cv is None:
+        return None
+    cfg = so.get("configuration", {})
+    dt = np.dtype(cv["configuration"]["data_type"])
+    if dt.kind not in "iu":
+        return None
+    info = np.iinfo(dt)
+    return float(cfg.get("scale", 1)), float(cfg.get("offset", 0)), dt, int(info.max) if info.min == 0 else int(info.min)
+
+
+def check_representable(arr: zarr.Array, data: np.ndarray, name: str = "") -> None:
+    """Raise if ``data`` cannot be stored exactly-to-the-step in ``arr``'s quantised integer type.
+
+    ``cast_value`` is configured with ``out_of_range="clamp"`` (integers never wrap), but a clamp would
+    still silently turn, e.g., a pressure given in Pa into 3276.7 hPa. So the writers compute the integer
+    each finite value would become (``rint((x - offset) * scale)``, the codec's nearest-even rounding) and
+    refuse the write if any falls outside the type range minus the NaN sentinel, or if any value is
+    +/-inf. NaN is allowed: it is stored as the sentinel and decodes to NaN. Arrays without
+    ``scale_offset`` + ``cast_value`` are not checked (float storage has no range problem).
+
+    Args:
+        arr: Target zarr array.
+        data: Values about to be written.
+        name: Label for the error message.
+
+    Raises:
+        ValueError: With the representable range in physical units and the offending min/max.
+    """
+    q = _quantizer(arr.metadata.to_dict()["codecs"])
+    if q is None:
+        return
+    scale, offset, dt, sentinel = q
+    info = np.iinfo(dt)
+    lo, hi = int(info.min), int(info.max)
+    lo, hi = (lo + 1, hi) if sentinel == lo else (lo, hi - 1)
+    x = np.asarray(data, dtype=np.float64)
+    if np.isinf(x).any():
+        raise ValueError(f"{name}: {int(np.isinf(x).sum())} infinite values cannot be stored")
+    finite = x[np.isfinite(x)]
+    if finite.size == 0:
+        return
+    qi = np.rint((finite - offset) * scale)
+    bad = (qi < lo) | (qi > hi)
+    if bad.any():
+        raise ValueError(
+            f"{name}: {int(bad.sum())} values outside the representable range [{lo / scale + offset:g}, {hi / scale + offset:g}] "
+            f"of {dt} step {1 / scale:g} (got min {finite.min():g}, max {finite.max():g}); refusing to clamp"
+        )
 
 
 @dataclass(frozen=True)
@@ -407,6 +488,7 @@ def create_ptype_store(
             "forecast_hours": fh.tolist(),
             "variables": {k: {"resampling_method": s.aggregation, "dtype": s.dtype} for k, s in specs.items()},
             "row_order": "south_to_north" if grid.row0_is_south else "north_to_south",
+            "layout": "staging",
             **(dict(attrs) if attrs else {}),
         },
     }
@@ -470,6 +552,8 @@ def write_ptype_hour(path, fh_index: int, fields: Mapping[str, np.ndarray]) -> d
         ValueError: For a wrong shape or an out-of-range ``fh_index``.
     """
     root = _open_root(path, "r+")
+    if root.attrs.get("hrrr_ptype", {}).get("layout") == "finalized":
+        raise ValueError(f"{path} is finalized (one shard per array spans all hours); per-hour writes go to a staging store")
     layout = root.attrs["multiscales"]["layout"]
     ny, nx = layout[0]["spatial:shape"]
     written: dict[str, int] = {}
@@ -482,6 +566,7 @@ def write_ptype_hour(path, fh_index: int, fields: Mapping[str, np.ndarray]) -> d
         arr = np.asarray(data)
         if arr.shape != (ny, nx):
             raise ValueError(f"{name} has shape {arr.shape}, expected {(ny, nx)}")
+        check_representable(a0, arr, name)
         method = a0.attrs.get("resampling_method", "mean")
         fill = a0.fill_value
         cur = arr.astype(a0.dtype, copy=False)
@@ -497,19 +582,48 @@ def write_ptype_hour(path, fh_index: int, fields: Mapping[str, np.ndarray]) -> d
 # ---------------------------------------------------------------------------------------------
 # Sounding store
 # ---------------------------------------------------------------------------------------------
-def default_sounding_encoding() -> tuple[list, list]:
-    """``(filters, compressors)`` of the sounding array: 0.01-unit int32, transposed, blosc-zstd bitshuffle.
+SoundingEncoding = Literal["int16-0.1", "int32-0.01", "lossless"]
 
-    Why (numbers from benchmarks/results/compression_local.md, one real hour): lossless float32 + zstd
-    only reaches 738 MB/hour (the low mantissa bits of interpolated values are noise). Rounding to 0.01
-    in every unit (degC, m/s, hPa; max error 0.005) as int32 lets the bit shuffle put the constant high
-    bits together, and transposing each ``(1, 1024, 105)`` chunk to variable-major makes neighbouring
-    bytes come from neighbouring grid columns, which are smooth: 220 MB/hour, and the network changes
-    the dominant class in 0.007 % of columns. One scale must serve every unit because ``scale_offset``
-    takes a scalar, and p * 100 does not fit int16, hence int32 (``int16`` with step 0.1 is the smaller
-    alternative: 134 MB/hour, class change in 0.06 % of columns).
+
+def sounding_encoding(kind: SoundingEncoding = "int16-0.1") -> tuple[list, list]:
+    """``(filters, compressors)`` for the sounding array; pass them to :func:`create_sounding_store`.
+
+    All three are decodable by the site's zarrita 0.7.5 (Node test in benchmarks/results/compression_local.md).
+    Every option transposes each ``(1, 1024, 105)`` chunk to variable-major (neighbouring bytes come from
+    neighbouring, smooth grid columns) and uses blosc-zstd with bit shuffle. One scale serves every unit
+    because ``scale_offset`` takes a scalar.
+
+    * ``"int16-0.1"`` (default): 0.1 degC / m/s / hPa, max error 0.05; 134 MB per hour on the sample hour.
+      int16 holds -32767..32767 (-32768 is the NaN sentinel), i.e. -3276.7..3276.7 in every unit: HRRR
+      pressure (<= ~1085 hPa -> 10850), temperature/dewpoint (about -90..60 degC) and wind (< 200 m/s) fit
+      with a wide margin; anything outside is rejected by :func:`check_representable`, never wrapped.
+    * ``"int32-0.01"``: 0.01 in every unit, max error 0.005 (p * 100 does not fit int16); 220 MB per hour.
+    * ``"lossless"``: float32, 541 MB per hour.
+
+    Args:
+        kind: One of the names above.
+
+    Returns:
+        ``(filters, compressors)``.
     """
-    return [*quantized_float(0.01, "int32"), TransposeCodec(order=(0, 2, 1))], [BloscCodec(cname="zstd", clevel=5, shuffle="bitshuffle", typesize=4)]
+    tr = TransposeCodec(order=(0, 2, 1))
+    if kind == "int16-0.1":
+        return [*quantized_float(0.1, "int16"), tr], [BloscCodec(cname="zstd", clevel=5, shuffle="bitshuffle", typesize=2)]
+    if kind == "int32-0.01":
+        return [*quantized_float(0.01, "int32"), tr], [BloscCodec(cname="zstd", clevel=5, shuffle="bitshuffle", typesize=4)]
+    if kind == "lossless":
+        return [tr], [BloscCodec(cname="zstd", clevel=5, shuffle="bitshuffle", typesize=4)]
+    raise ValueError(f"unknown sounding encoding {kind!r}")
+
+
+def default_sounding_encoding() -> tuple[list, list]:
+    """The default ``(filters, compressors)``: :func:`sounding_encoding` ``("int16-0.1")``.
+
+    0.1-unit precision was chosen by the project scientist: on the sample hour it changes the network's
+    dominant class in 0.06 % of columns (0.1 % of precipitating ones) and is 39 % smaller than 0.01-unit
+    int32 (benchmarks/results/compression_local.md).
+    """
+    return sounding_encoding("int16-0.1")
 
 
 def create_sounding_store(
@@ -598,6 +712,9 @@ def write_sounding_hour(path, fh_index: int, sounding: np.ndarray) -> None:
         sounding: ``(n_locations, n_variables)`` float32 with ``location = j * ni + i`` (j south to
             north) and EARTH-relative winds. ``columns.build_soundings(...).reshape(n, -1)`` of a
             south-first HRRR grid already has this order.
+
+    Raises:
+        ValueError: Wrong shape/index, or values outside the stored integer range (:func:`check_representable`).
     """
     arr = zarr.open_array(path, path="sounding", mode="r+", zarr_format=3)
     s = np.asarray(sounding)
@@ -605,4 +722,141 @@ def write_sounding_hour(path, fh_index: int, sounding: np.ndarray) -> None:
         raise ValueError(f"sounding has shape {s.shape}, expected {arr.shape[1:]}")
     if not 0 <= fh_index < arr.shape[0]:
         raise ValueError(f"fh_index {fh_index} outside 0..{arr.shape[0] - 1}")
+    check_representable(arr, s, "sounding")
     arr[fh_index] = s.astype(np.float32, copy=False)
+
+
+# ---------------------------------------------------------------------------------------------
+# Finalize: per-hour staging chunks -> one run-spanning shard per array and level
+# ---------------------------------------------------------------------------------------------
+#: S3 Standard-IA minimum billable object size (AWS: "128 KB"; counted here as 128 KiB = 131,072 B).
+IA_MIN_OBJECT_BYTES = 128 * 1024
+_TMP_SUFFIX = ".finalize-tmp"
+_OLD_SUFFIX = ".staging"
+_COORDS = ("x", "y", "forecast_hour", "spatial_ref")
+
+
+def _layout_state(path: Path) -> str | None:
+    """``hrrr_ptype.layout`` of the store at ``path`` (``None`` if there is no store)."""
+    doc = path / "zarr.json"
+    if not doc.is_file():
+        return None
+    import json
+
+    attrs = json.loads(doc.read_text()).get("attributes", {})
+    return attrs.get("hrrr_ptype", {}).get("layout", "staging")
+
+
+def _object_report(path: Path) -> dict[str, Any]:
+    sizes = {f.relative_to(path).as_posix(): f.stat().st_size for f in path.rglob("*") if f.is_file()}
+    small = {k: v for k, v in sizes.items() if v < IA_MIN_OBJECT_BYTES}
+    return {
+        "objects": len(sizes),
+        "bytes": sum(sizes.values()),
+        "objects_under_128k": len(small),
+        "bytes_under_128k": sum(small.values()),
+        "billed_bytes_ia": sum(max(v, IA_MIN_OBJECT_BYTES) for v in sizes.values()),
+        "small_objects": dict(sorted(small.items())),
+    }
+
+
+def finalize_ptype_store(path, *, remove_staging: bool = True) -> dict:
+    """Rewrite a staged gridded run store into one run-spanning shard per array and pyramid level.
+
+    Call ONCE per run, from one process, after every ``write_ptype_hour`` of the run has finished and before
+    upload. For each data array at each level the result is a sharded Zarr v3 array with
+    ``shards = (n_hours, ny_l, nx_l)`` and inner ``chunks = (1, ny_l, nx_l)``, same dtype, fill value, codecs
+    and attributes. Why this shape: the site reads one hour of one level per array, and zarrita fetches
+    exactly one inner chunk per such read (plus the shard index: ``16 * n_hours + 4`` bytes from the end of
+    the object), while a run now produces one object per array and level instead of one per hour, which is
+    what S3 Standard-IA's 128 KiB minimum billable size rewards. Hours that were never written stay absent
+    from the shard index (zarr writes no inner chunk equal to the fill value) and read as fill/NaN.
+
+    Crash safety and idempotence (local filesystem only):
+
+    1. If ``path`` is already finalized: nothing is rewritten (leftover temp/staging siblings are removed
+       when ``remove_staging``) and the report has ``already_finalized=True``.
+    2. If a previous run died between the two renames (``path`` missing, ``<path>.finalize-tmp`` complete),
+       the rename is completed.
+    3. Otherwise any stale ``<path>.finalize-tmp`` is deleted and rebuilt from the staging store, whose
+       root ``zarr.json`` is written LAST with ``layout="finalized"`` (so an interrupted build is never
+       mistaken for a complete one). Then ``path`` -> ``<path>.staging``, temp -> ``path``, and the staging
+       copy is deleted (or kept as the sibling ``<path>.staging`` if ``remove_staging=False``; it must not
+       be uploaded). ``path`` then contains only final objects: upload the whole directory.
+
+    Args:
+        path: Local directory of a store made by :func:`create_ptype_store` and filled by
+            :func:`write_ptype_hour`.
+        remove_staging: Delete the staging copy after the swap.
+
+    Returns:
+        ``{"path", "upload", "already_finalized", "n_hours", "missing_hours", "missing_by_array",
+        "objects", "bytes", "objects_under_128k", "bytes_under_128k", "billed_bytes_ia", "small_objects"}``.
+        ``missing_hours`` are forecast hours (values) for which NO array had a stored chunk;
+        ``missing_by_array`` lists, per array, the hours with no level-0 chunk (all-fill hours of a float
+        array, e.g. all-NaN, are indistinguishable from unwritten ones and also read as missing).
+
+    Raises:
+        FileNotFoundError: If there is no store at ``path`` and nothing to recover.
+    """
+    path = Path(path)
+    tmp = path.with_name(path.name + _TMP_SUFFIX)
+    old = path.with_name(path.name + _OLD_SUFFIX)
+    if _layout_state(path) is None and _layout_state(tmp) == "finalized":
+        os.rename(tmp, path)  # recover from a crash between the two renames
+    state = _layout_state(path)
+    if state is None:
+        raise FileNotFoundError(f"no gridded store at {path}")
+    report: dict[str, Any] = {"path": str(path), "upload": [str(path)]}
+    if state == "finalized":
+        if remove_staging:
+            shutil.rmtree(tmp, ignore_errors=True)
+            shutil.rmtree(old, ignore_errors=True)
+        root = zarr.open_group(path, mode="r")
+        return (
+            report | {"already_finalized": True, "n_hours": len(root.attrs["hrrr_ptype"]["forecast_hours"]), "missing_hours": None, "missing_by_array": None} | _object_report(path)
+        )
+
+    shutil.rmtree(tmp, ignore_errors=True)
+    src = zarr.open_group(path, mode="r")
+    root_attrs = dict(src.attrs)
+    hours = list(root_attrs["hrrr_ptype"]["forecast_hours"])
+    layout = root_attrs["multiscales"]["layout"]
+    dst = zarr.open_group(tmp, mode="w", zarr_format=3)
+    dst.attrs.update(root_attrs | {"hrrr_ptype": root_attrs["hrrr_ptype"] | {"layout": "finalizing"}})
+    missing_by_array: dict[str, list[int]] = {}
+    for entry in layout:
+        lvl = entry["asset"]
+        sg = src[lvl]
+        dg = dst.create_group(lvl, attributes=dict(sg.attrs))
+        for name, arr in sg.arrays():
+            if name in _COORDS:
+                shutil.copytree(path / lvl / name, tmp / lvl / name)  # byte-for-byte: the site reads forecast_hour
+                continue
+            md = arr.metadata.to_dict()
+            nt, ny_l, nx_l = arr.shape
+            if lvl == layout[0]["asset"]:
+                have = {int(p.name) for p in (path / lvl / name / "c").iterdir()} if (path / lvl / name / "c").is_dir() else set()
+                missing_by_array[name] = [hours[k] for k in range(nt) if k not in have]
+            out = dg.create_array(
+                name,
+                shape=arr.shape,
+                chunks=(1, ny_l, nx_l),
+                shards=(nt, ny_l, nx_l),
+                dtype=arr.dtype,
+                fill_value=arr.fill_value,
+                filters=list(arr.filters),
+                compressors=list(arr.compressors),
+                dimension_names=md.get("dimension_names"),
+                attributes=dict(arr.attrs),
+            )
+            out[...] = arr[...]  # decoded values re-encode to the same integers (quantised) or bits (float)
+    all_missing = sorted(set.intersection(*(set(v) for v in missing_by_array.values()))) if missing_by_array else []
+    final_attrs = root_attrs | {"hrrr_ptype": root_attrs["hrrr_ptype"] | {"layout": "finalized", "missing_hours": all_missing}}
+    zarr.open_group(tmp, mode="r+").attrs.put(final_attrs)  # completion marker, written last
+    shutil.rmtree(old, ignore_errors=True)
+    os.rename(path, old)
+    os.rename(tmp, path)
+    if remove_staging:
+        shutil.rmtree(old)
+    return report | {"already_finalized": False, "n_hours": len(hours), "missing_hours": all_missing, "missing_by_array": missing_by_array} | _object_report(path)

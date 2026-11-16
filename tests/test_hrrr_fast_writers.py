@@ -159,12 +159,12 @@ def test_sounding_round_trip_and_location_order(tmp_path):
     writers.write_sounding_hour(s, 2, snd)
     arr = zarr.open_array(s, path="sounding", mode="r")
     back = arr[2]
-    assert np.max(np.abs(back.astype(np.float64) - snd.astype(np.float64))) <= 0.005 + 1e-4  # 0.01-unit int32 default
+    assert np.max(np.abs(back.astype(np.float64) - snd.astype(np.float64))) <= 0.05 + 1e-4  # 0.1-unit int16 default
     assert np.isnan(arr[1]).all()
     # location = j * ni + i with j south -> north: same index as the row-major (y, x) grid of a south-first grid
     attrs = zarr.open_group(s, mode="r").attrs
     j, i = 37, 101
-    np.testing.assert_allclose(arr[2, j * attrs["grid"]["ni"] + i], snd.reshape(NY, NX, -1)[j, i], atol=0.0051)
+    np.testing.assert_allclose(arr[2, j * attrs["grid"]["ni"] + i], snd.reshape(NY, NX, -1)[j, i], atol=0.0501)
     # sharded: exactly one object per written hour
     objs = sorted(p.relative_to(s).as_posix() for p in (s / "sounding" / "c").rglob("*") if p.is_file())
     assert objs == ["sounding/c/2/0/0"]
@@ -200,7 +200,7 @@ def test_concurrent_processes_write_different_hours(tmp_path):
         for name in FLAGS:
             np.testing.assert_array_equal(root[f"0/{name}"][fh], f[name])
             np.testing.assert_array_equal(root[f"2/{name}"][fh], writers.block_reduce(writers.block_reduce(f[name], "max", 255), "max", 255))
-        np.testing.assert_allclose(snd[fh], hour_sounding(fh), atol=0.0051, rtol=0)
+        np.testing.assert_allclose(snd[fh], hour_sounding(fh), atol=0.0501, rtol=0)
     # metadata documents were written once by create_* and never touched by the writers
     assert {p.relative_to(tmp_path) for p in tmp_path.rglob("zarr.json")} == files_before
     assert all(p.read_bytes() == b for p, b in meta_before.items())
@@ -378,8 +378,150 @@ def test_site_read_one_forecast_hour_and_one_sounding(tmp_path):
     index = np.frombuffer(index_raw[:-4], dtype="<u8").reshape(n_inner, 2)
     off, nbytes = index[loc // n_loc_chunk]
     chunk = _decode_bytes(meta, site.get_range(key, int(off), int(nbytes)), (1, n_loc_chunk, n_var))[0]
-    np.testing.assert_allclose(chunk[loc % n_loc_chunk], hour_sounding(4)[loc], atol=0.0051, rtol=0)
+    np.testing.assert_allclose(chunk[loc % n_loc_chunk], hour_sounding(4)[loc], atol=0.0501, rtol=0)
     ranges = [e for e in site.log if e[0] == "RANGE"]
     assert len(ranges) == 2  # index + one inner chunk
     assert ranges[1][2] < (s / key).stat().st_size / 4  # a click reads a small part of the hour's shard
     assert ranges[1][2] < n_loc_chunk * n_var * 4  # and less than the raw float32 chunk
+
+
+# ---------------------------------------------------------------------------------------------
+# int16 range handling
+# ---------------------------------------------------------------------------------------------
+def test_sounding_int16_range_is_checked_not_clamped(tmp_path):
+    _, s = _create(tmp_path)
+    snd = hour_sounding(0)
+    edge = snd.copy()
+    edge[0, :3] = [3276.7, -3276.7, np.nan]  # the representable extremes and NaN are accepted
+    writers.write_sounding_hour(s, 0, edge)
+    back = zarr.open_array(s, path="sounding", mode="r")[0, 0, :3]
+    np.testing.assert_allclose(back[:2], [3276.7, -3276.7], atol=1e-3)
+    assert np.isnan(back[2])
+    for bad in (101325.0, -3276.8, np.inf):  # pressure in Pa, one step past the sentinel side, infinity
+        x = snd.copy()
+        x[5, 104] = bad
+        with pytest.raises(ValueError, match="representable|infinite"):
+            writers.write_sounding_hour(s, 1, x)
+    assert np.isnan(zarr.open_array(s, path="sounding", mode="r")[1]).all()  # nothing was written
+    # realistic HRRR extremes in every group fit with margin: p 1085 hPa -> 10850, T -90 / 60 degC, wind 150 m/s
+    ok = snd.copy()
+    ok[:, 84:] = 1085.0
+    ok[:, :21] = -90.0
+    ok[:, 42:63] = 150.0
+    writers.write_sounding_hour(s, 2, ok)
+
+
+def test_probability_range_is_checked(tmp_path):
+    g, _ = _create(tmp_path)
+    f = {"ML_rain": hour_fields(0)["ML_rain"].copy()}
+    f["ML_rain"][0, 0] = 1.0 + 1e-6  # rounds to step 254: fine
+    writers.write_ptype_hour(g, 0, f)
+    f["ML_rain"][0, 0] = 1.01  # step 256.5 -> would collide with / exceed the NaN sentinel 255
+    with pytest.raises(ValueError, match="representable"):
+        writers.write_ptype_hour(g, 1, f)
+
+
+def test_selectable_sounding_encodings(tmp_path):
+    grid = make_grid()
+    snd = hour_sounding(0)
+    for kind, tol in (("int32-0.01", 0.0051), ("lossless", 0.0)):
+        p = tmp_path / f"{kind}.zarr"
+        f, c = writers.sounding_encoding(kind)
+        writers.create_sounding_store(p, grid, HOURS, heights_m=HEIGHTS, variable_groups=GROUPS, filters=f, compressors=c)
+        writers.write_sounding_hour(p, 0, snd)
+        np.testing.assert_allclose(zarr.open_array(p, path="sounding", mode="r")[0], snd, atol=tol, rtol=0)
+
+
+# ---------------------------------------------------------------------------------------------
+# Finalize (run-spanning shards)
+# ---------------------------------------------------------------------------------------------
+def _staged_values(g: Path) -> dict[str, np.ndarray]:
+    root = zarr.open_group(g, mode="r")
+    return {f"{lvl}/{k}": a[...] for lvl in root.group_keys() for k, a in root[lvl].arrays()}
+
+
+def test_finalize_round_trip_idempotent_and_missing_hours(tmp_path):
+    g, _ = _create(tmp_path)
+    written = [0, 1, 2, 4, 5, 7]  # hours 3 and 6 never written
+    for fh in written:
+        writers.write_ptype_hour(g, fh, hour_fields(fh))
+    before = _staged_values(g)
+    root_before = json.loads((g / "zarr.json").read_text())["attributes"]
+    levels_before = {lvl: json.loads((g / str(lvl) / "zarr.json").read_text())["attributes"] for lvl in range(3)}
+
+    rep = writers.finalize_ptype_store(g)
+    assert not rep["already_finalized"] and rep["missing_hours"] == [3, 6]
+    assert all(v == [3, 6] for v in rep["missing_by_array"].values())
+    assert rep["upload"] == [str(g)]
+    assert not (tmp_path / "grid.zarr.staging").exists() and not (tmp_path / "grid.zarr.finalize-tmp").exists()
+    after = _staged_values(g)
+    assert before.keys() == after.keys()
+    for k in before:
+        np.testing.assert_array_equal(after[k], before[k])  # bit-identical, including NaN/255 for hours 3 and 6
+    # site-facing metadata unchanged; only our own hrrr_ptype block records the layout
+    root_after = json.loads((g / "zarr.json").read_text())["attributes"]
+    assert {k: v for k, v in root_after.items() if k != "hrrr_ptype"} == {k: v for k, v in root_before.items() if k != "hrrr_ptype"}
+    assert root_after["hrrr_ptype"]["layout"] == "finalized"
+    for lvl in range(3):
+        assert json.loads((g / str(lvl) / "zarr.json").read_text())["attributes"] == levels_before[lvl]
+    # one data object per array per level, inner chunk = one hour, shard = all hours
+    data_objs = [p for p in g.rglob("*") if p.is_file() and "c" in p.relative_to(g).parts and p.relative_to(g).parts[1] not in ("x", "y", "forecast_hour", "spatial_ref")]
+    assert len(data_objs) == 3 * len(writers.default_ptype_variables())
+    meta = json.loads((g / "0" / "ML_rain" / "zarr.json").read_text())
+    assert meta["chunk_grid"]["configuration"]["chunk_shape"] == [len(HOURS), NY, NX]
+    assert meta["codecs"][0]["name"] == "sharding_indexed" and meta["codecs"][0]["configuration"]["chunk_shape"] == [1, NY, NX]
+    assert rep["objects"] == len([p for p in g.rglob("*") if p.is_file()])
+
+    # idempotent: a second call changes nothing
+    stamp = {p: p.stat().st_mtime_ns for p in g.rglob("*") if p.is_file()}
+    rep2 = writers.finalize_ptype_store(g)
+    assert rep2["already_finalized"] and {p: p.stat().st_mtime_ns for p in g.rglob("*") if p.is_file()} == stamp
+    with pytest.raises(ValueError, match="finalized"):
+        writers.write_ptype_hour(g, 3, hour_fields(3))
+
+
+def test_finalize_recovers_from_crashes(tmp_path):
+    g, _ = _create(tmp_path)
+    for fh in HOURS:
+        writers.write_ptype_hour(g, fh, hour_fields(fh))
+    before = _staged_values(g)
+    # crash during the build: a stale, incomplete temp dir is discarded and rebuilt
+    (tmp_path / "grid.zarr.finalize-tmp" / "junk").mkdir(parents=True)
+    writers.finalize_ptype_store(g, remove_staging=False)
+    assert (tmp_path / "grid.zarr.staging").exists()  # kept on request, sibling of the final store
+    # crash between the two renames: final store sits in the temp name, path missing
+    os_rename = __import__("os").rename
+    os_rename(g, tmp_path / "grid.zarr.finalize-tmp")
+    rep = writers.finalize_ptype_store(g)
+    assert rep["already_finalized"] and not (tmp_path / "grid.zarr.staging").exists()
+    after = _staged_values(g)
+    for k in before:
+        np.testing.assert_array_equal(after[k], before[k])
+
+
+def test_concurrent_staging_then_finalize_and_site_read(tmp_path):
+    g, s = _create(tmp_path)
+    ctx = mp.get_context("spawn")
+    with ctx.Pool(4) as pool:
+        pool.map(_worker, [(g, s, HOURS[k::4]) for k in range(4)])
+    writers.finalize_ptype_store(g)
+    # replay the site's frame read on the finalized store: per array, doc + shard-index suffix + one inner chunk
+    for level, fh_value in ((0, 6), (2, 1)):
+        site = SiteMimic(g)
+        entry = site.json("zarr.json")["attributes"]["multiscales"]["layout"][level]
+        lvl = entry["asset"]
+        fh = _decode_bytes(site.json(f"{lvl}/forecast_hour/zarr.json"), site.get(f"{lvl}/forecast_hour/c/0"), (len(HOURS),))
+        k = int(np.flatnonzero(fh == fh_value)[0])
+        nj, ni = entry["spatial:shape"]
+        for name in ML:
+            meta = site.json(f"{lvl}/{name}/zarr.json")
+            n_inner = meta["chunk_grid"]["configuration"]["chunk_shape"][0]
+            idx = np.frombuffer(site.get_suffix(f"{lvl}/{name}/c/0/0/0", n_inner * 16 + 4)[:-4], dtype="<u8").reshape(n_inner, 2)
+            off, nb = idx[k]
+            out = _decode_bytes(meta, site.get_range(f"{lvl}/{name}/c/0/0/0", int(off), int(nb)), (1, nj, ni))[0]
+            ref = hour_fields(fh_value)[name]
+            for _ in range(level):
+                ref = writers.block_reduce(ref, "mean")
+            np.testing.assert_allclose(out, ref, atol=0.5 / 254 + 1e-6, rtol=0)
+        assert len([e for e in site.log if e[0] == "RANGE"]) == 2 * 5  # index + one inner chunk per array
+        assert len(site.log) == 1 + 2 + 3 * 5

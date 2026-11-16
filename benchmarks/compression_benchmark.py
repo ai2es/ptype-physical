@@ -373,6 +373,72 @@ def bench_defaults(sample: Path, grid, work: Path) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------------------------
+# Object sizes: per-hour (staging) vs finalized layout, S3 Standard-IA billed bytes
+# ---------------------------------------------------------------------------------------------
+def _size_stats(sizes: list[int]) -> dict:
+    a = np.asarray(sizes, dtype=np.int64)
+    small = a[a < writers.IA_MIN_OBJECT_BYTES]
+    return {
+        "objects": int(a.size),
+        "bytes": int(a.sum()),
+        "min": int(a.min()),
+        "median": float(np.median(a)),
+        "max": int(a.max()),
+        "objects_under_128k": int(small.size),
+        "bytes_under_128k": int(small.sum()),
+        "billed_bytes_ia": int(np.maximum(a, writers.IA_MIN_OBJECT_BYTES).sum()),
+    }
+
+
+def _sizes(path: Path) -> list[int]:
+    return [f.stat().st_size for f in path.rglob("*") if f.is_file()]
+
+
+def bench_objects(sample: Path, grid, work: Path, n_hours_list: list[int], keep: bool) -> list[dict]:
+    """Build whole runs from the sample hour REPEATED n times; object counts/sizes before and after finalize.
+
+    Every hour holds identical data, so per-object compressibility is real but hour-to-hour variation (and
+    hence a run-spanning shard's size) is only as representative as this one hour.
+    """
+    meta = json.loads((sample / "meta.json").read_text())
+    fields = {k: np.load(sample / f"{k}.npy") for k in (*ML, *FLAGS)}
+    fields["prate"] = np.load(sample / "PRATE.npy")
+    snd = np.load(sample / "sounding_earth.npy")
+    rows = []
+    for n in n_hours_list:
+        run = work / f"objects_{n}h"
+        shutil.rmtree(run, ignore_errors=True)
+        gpath, spath = run / "grid.zarr", run / "sounding.zarr"
+        writers.create_ptype_store(gpath, grid, range(n), init_time="2023-12-26T00:00Z")
+        writers.create_sounding_store(spath, grid, range(n), heights_m=meta["heights_m"], variable_groups=meta["variable_groups"], init_time="2023-12-26T00:00Z")
+        t0 = time.perf_counter()
+        for fh in range(n):
+            writers.write_ptype_hour(gpath, fh, fields)
+        t_g = time.perf_counter() - t0
+        t0 = time.perf_counter()
+        for fh in range(n):
+            writers.write_sounding_hour(spath, fh, snd)
+        t_s = time.perf_counter() - t0
+        staged = _sizes(gpath)
+        sound = _sizes(spath)
+        t0 = time.perf_counter()
+        rep = writers.finalize_ptype_store(gpath)
+        t_f = time.perf_counter() - t0
+        final = _sizes(gpath)
+        common = {"hours": n, "write_grid_s": t_g, "write_sounding_s": t_s, "finalize_s": t_f}
+        rows.append(common | {"layout": "per-hour (staging)", "store": "gridded"} | _size_stats(staged))
+        rows.append(common | {"layout": "finalized", "store": "gridded"} | _size_stats(final))
+        rows.append(common | {"layout": "both", "store": "sounding"} | _size_stats(sound))
+        rows.append(common | {"layout": "per-hour (staging)", "store": "gridded+sounding"} | _size_stats(staged + sound))
+        rows.append(common | {"layout": "finalized", "store": "gridded+sounding"} | _size_stats(final + sound))
+        rows.append({"hours": n, "layout": "finalized", "store": "small objects (gridded)", "detail": rep["small_objects"]})
+        print(json.dumps(rows[-6:-1]), flush=True)
+        if not keep:
+            shutil.rmtree(run, ignore_errors=True)
+    return rows
+
+
+# ---------------------------------------------------------------------------------------------
 # Reporting
 # ---------------------------------------------------------------------------------------------
 def md_table(rows: list[dict], cols: list[str]) -> str:
@@ -404,6 +470,7 @@ def main() -> None:
     p.add_argument("--location-chunk", type=int, default=1024)
     p.add_argument("--chunkings", default="1059x1799,530x900,512x512,353x360,256x256")
     p.add_argument("--chunk-encoding", default="uint8-1/254+zstd3")
+    p.add_argument("--object-hours", default="19,49", help="run lengths (hours) for --sections objects")
     args = p.parse_args()
 
     sample = Path(args.sample)
@@ -435,6 +502,10 @@ def main() -> None:
     if "defaults" in sections:
         results["defaults"] = bench_defaults(sample, grid, work)
         print(md_table(results["defaults"], ["item", "grid_bytes", "sounding_bytes", "total_bytes", "note"]), flush=True)
+    if "objects" in sections:
+        results["objects"] = bench_objects(sample, grid, work, [int(h) for h in args.object_hours.split(",")], args.keep)
+        cols = ["hours", "store", "layout", "objects", "bytes", "min", "median", "max", "objects_under_128k", "bytes_under_128k", "billed_bytes_ia"]
+        print(md_table([r for r in results["objects"] if "objects" in r], cols), flush=True)
     stamp = time.strftime("%Y%m%dT%H%M%S")
     (work / f"results_{stamp}.json").write_text(json.dumps(results, indent=1))
     print(f"\nsaved {work / f'results_{stamp}.json'}")

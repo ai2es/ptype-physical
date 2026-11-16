@@ -116,7 +116,9 @@ whole level of one hour for each of 5 arrays:
 (GETs count data chunks only; each array also costs one `zarr.json` GET because `readVar` re-opens it.)
 Bytes differ by < 2 % between chunkings, requests by up to 40x. Chosen: whole-level chunks `(1, ny_l, nx_l)`,
 no sharding (sharding would ADD a HEAD + index read per array and save nothing, since there is already one
-object per array per level per hour). Trade-off: if the site later reads only the viewport, smaller chunks
+object per array per level per hour). **Superseded for upload:** because S3 Standard-IA bills objects as at
+least 128 KiB, this per-hour layout is now only the staging layout; `finalize_ptype_store` shards each array
+over all hours of the run before upload (see `object_sizes_local.md`), at the cost of the extra index reads. Trade-off: if the site later reads only the viewport, smaller chunks
 would help at level 0 only (arithmetic with `chooseLevel` at 38 N: level 0 is chosen from zoom ~5.4; at
 zoom 6 a 1400-px-wide map spans ~2,700 km of the 5,400 km wide domain).
 
@@ -208,21 +210,30 @@ Bytes per click with the chosen encoding (Node log): index 29,780 B once per hou
 
 ## 6. Default encodings: one hour and extrapolation (`--sections defaults`)
 
-Defaults: ML_* uint8 1/254 + zstd 3; flags uint8 + zstd 3; prate float32 + zstd 3; sounding int32 0.01 +
-transpose + blosc-zstd5 bitshuffle, sharded. Measured one hour: gridded 3,625,979 B (56 chunk objects incl.
-coordinates), sounding 219,660,286 B (1 shard); write 0.32 s (gridded, 11 arrays x 4 levels) and 1.27 s
-(sounding); per-store metadata 84,859 B in 69 documents. Arithmetic, ASSUMING this hour is representative:
+**Update (scientist's decision): the sounding default is now int16 step 0.1 + transpose + blosc-zstd5
+bitshuffle** (`writers.sounding_encoding("int16-0.1")`; `"int32-0.01"` and `"lossless"` remain selectable).
+int16 holds -32767..32767 with -32768 reserved for NaN, i.e. -3276.7..3276.7 in every unit; HRRR pressure
+(<= ~1085 hPa -> 10850), T/Td and wind fit with a wide margin. Values outside that range, and +/-inf, make
+`write_sounding_hour` / `write_ptype_hour` raise `ValueError` before anything is written (no wrap, no silent
+clamp); NaN round-trips as NaN (`test_sounding_int16_range_is_checked_not_clamped`).
+
+Defaults: ML_* uint8 1/254 + zstd 3; flags uint8 + zstd 3; prate float32 + zstd 3; sounding int16 0.1 +
+transpose + blosc-zstd5 bitshuffle, sharded one shard per hour. Measured one hour (re-run after the change):
+gridded 3,625,979 B, sounding 134,062,744 B; write 0.38 s (gridded, 11 arrays x 4 levels) and 2.20 s
+(sounding; machine loaded); per-store metadata 84,875 B in 69 documents. Arithmetic, ASSUMING this hour is
+representative:
 
 | scope | hours | gridded | soundings | total |
 |---|---|---|---|---|
-| one hour (measured) | 1 | 3.63 MB | 219.7 MB | 223.3 MB |
-| 18 h run (f00-f18) | 19 | 68.9 MB | 4.17 GB | 4.24 GB |
-| 48 h run (f00-f48) | 49 | 177.7 MB | 10.76 GB | 10.94 GB |
-| archive, 85 days x 576 h | 48,960 | 177.5 GB | 10.75 TB | 10.93 TB |
+| one hour (measured) | 1 | 3.63 MB | 134.1 MB | 137.7 MB |
+| 18 h run (f00-f18) | 19 | 68.9 MB | 2.55 GB | 2.62 GB |
+| 48 h run (f00-f48) | 49 | 177.7 MB | 6.57 GB | 6.75 GB |
+| archive, 85 days x 576 h | 48,960 | 177.5 GB | 6.56 TB | 6.74 TB |
 
-Same arithmetic for other sounding encodings (gridded defaults included): int16 0.1 + transpose + bitshuffle
-137,688,736 B/h -> 2.62 GB per 18 h run, 6.74 TB archive; bitround 12 + bitshuffle 13.31 TB; lossless float32
-transpose + bitshuffle 26.69 TB; lossless float32 zstd 3 36.32 TB.
+Same arithmetic for other sounding encodings (gridded defaults included): int32 0.01 + transpose + bitshuffle
+223,286,265 B/h -> 4.24 GB per 18 h run, 10.93 TB archive; bitround 12 + bitshuffle 13.31 TB; lossless float32
+transpose + bitshuffle 26.69 TB; lossless float32 zstd 3 36.32 TB. Object counts and S3 Standard-IA billed
+bytes, including the finalized (run-sharded) gridded layout, are in `object_sizes_local.md`.
 
 ## 7. Recommendation
 
@@ -235,10 +246,9 @@ max error 0.005 and 132 of 1.9 M columns changing dominant class; 0.1 gives 134 
 Judgement:
 * Gridded: uint8 (step 1/254) + zstd 3 for ML_*; error 0.002 is invisible in a colour-shaded map. If the
   probabilities are also used numerically downstream, uint16 0.001 + blosc bitshuffle costs +2 MB/hour.
-* Soundings: int32 0.01 + transpose + blosc-zstd bitshuffle (the default). It keeps every value within 0.005
-  of the float32 input, so a profile in the skew-T and a browser re-run of the network are essentially the
-  stored ones, for 30 % of the lossless float32 + zstd 3 size (41 % of the best lossless option). Choose int16 0.1 if the archive budget matters more (-39 %,
-  ~4.2 TB less over the 85 days) and a 0.1 % class change rate in precipitating columns is acceptable.
+* Soundings (original judgement, since superseded by the scientist's choice of 0.1): int32 0.01 kept every
+  value within 0.005 for 220 MB/hour; int16 0.1 is 39 % smaller (~4.2 TB less over the 85 days) at a 0.1 %
+  class-change rate in precipitating columns. int16 0.1 is now the default.
 * zstd 3 rather than 9 for the gridded arrays: 9 is 5.7 % smaller for uint8 ML, 14 % for prate and 21 % for
   the flags (264,283 B/hour together, 7 % of the gridded hour, 0.1 % of the whole hour) at 1.2-1.5x the write
   time; either is defensible, the difference is negligible next to the soundings.
@@ -251,6 +261,12 @@ Judgement:
 * Winds in the sounding store are EARTH-relative (the docs say grid-relative). `src/model/evidential.ts`
   feeds `profile.u`/`profile.v` to the model, which takes grid-relative winds: rotate back with the
   `wind_rotation` attributes (or keep grid-relative storage if that is simpler for the site).
+* Finalized gridded stores (`finalize_ptype_store`, see `object_sizes_local.md`) are read by zarrita 0.7.5
+  unchanged (Node test, both FetchStore modes, values equal to zarr-python): per map frame 20 requests with
+  the default FetchStore (per array: `zarr.json`, HEAD, index suffix of 16 x n_hours + 4 B, one inner chunk)
+  or 15 with `useSuffixRequest`, versus 10 for the per-hour layout, because `readVar` re-opens each array per
+  frame and so loses zarrita's shard-index cache. Caching the opened arrays in the site would bring a frame
+  down to 5 requests after the first (not changed; site code is not ours).
 * Sharded reads need `HEAD` with a readable `Content-Length` (CORS `Access-Control-Expose-Headers`) or
   `useSuffixRequest: true` (suffix `Range`). Only a local server was used; S3/CloudFront were not tested.
 * `ptype.hrrr_fast.writers` needs `zarr>=3.4` and `cast-value-rs` (for `cast_value`); `pyproject.toml` was not
