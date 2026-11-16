@@ -9,8 +9,8 @@
 # (does the compute node's network change the best coalesce setting?) and decode scaling
 # with threads for each decoder (laptop result: only ecCodes releases the GIL).
 source /glade/work/dgagne/ptype_fast/ptype-physical/benchmarks/pbs/common.sh
-CACHE=$SCRATCH_DIR/reader_cache
-mkdir -p $CACHE
+CACHE_DIR=$SCRATCH_DIR/reader_cache_files; CACHE=$CACHE_DIR/f12_n30.pkl
+mkdir -p $CACHE_DIR
 # Fetch: time each coalesce setting twice and keep the bytes for the decode test.
 python benchmarks/reader_benchmark.py fetch --n-levels 30 --cache $CACHE 2>&1 | tee $RESULTS/reader_fetch.txt
 # Decode: thread and process pools up to the full node, to find where ecCodes stops scaling.
