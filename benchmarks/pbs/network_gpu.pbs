@@ -5,6 +5,17 @@
 #PBS -l select=1:ncpus=64:mpiprocs=1:ngpus=4
 #PBS -l walltime=00:30:00
 #PBS -j oe
-# Same suite as network_cpu.pbs on a GPU node (64 cores) to see whether GPU nodes differ from CPU nodes.
-export NODE_TAG=gpu
-exec bash /glade/work/dgagne/ptype_fast/ptype-physical/benchmarks/pbs/network_cpu.pbs
+# Same code as network_cpu.pbs on a GPU node (64 cores) to see whether GPU nodes differ from CPU nodes.
+# Order is chosen so that if a slow network makes the job hit its walltime, the sweep and the repeat come first.
+export RESULTS=/glade/derecho/scratch/dgagne/ptype_fast/net
+source /glade/work/dgagne/ptype_fast/ptype-physical/benchmarks/pbs/common.sh
+set +e
+OUT=$RESULTS/network_gpu_sweep_${PBS_JOBID%%.*}.json
+NB() { python benchmarks/network_benchmark.py "$@" --out "$OUT" 2>&1; }
+echo "node=$(hostname) $(lscpu | grep 'Model name')"
+NB sweep --label sweep --procs 1 2 4 8 16 32
+NB sweep --label threads8 --procs 8 --threads 8
+NB sweep --label repeat2 --procs 8
+NB sweep --label http2_only --procs 8 --client-option http2_only=true
+NB sweep --label repeat3 --procs 8
+echo "done $(date -u +%FT%TZ)"

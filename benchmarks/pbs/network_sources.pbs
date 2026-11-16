@@ -21,4 +21,9 @@ echo "## same obstore loop, each source, 1 and 8 processes"
 for S in gcs aws-http aws; do NB sweep --label src_$S --source $S --procs 1 8; done
 echo "## does the GCS mirror match AWS (idx offsets, sizes, SHA-256 of the first 20 selected ranges and the last range of f12)"
 python benchmarks/network_benchmark.py compare-sources --out "$OUT" 2>&1
+# Knob tests that did not fit in the walltime of the first CPU job (job 8208955 was cut off after threads8).
+echo "## knobs left over from the main CPU job: HTTP/2, coalesce, in-process threads at 1 process"
+NB sweep --label threads8 --procs 1 --threads 8
+NB sweep --label http2_only --procs 8 --client-option http2_only=true
+NB sweep --label coalesce0 --procs 8 --coalesce 0
 echo "done $(date -u +%FT%TZ)"
