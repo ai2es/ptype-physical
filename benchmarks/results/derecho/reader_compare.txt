@@ -1,0 +1,27 @@
+| field | shape | pygrib NaNs | eccodes max abs diff | eccodes NaN mask equal | gribberish max abs diff | gribberish NaN mask equal |
+|---|---|---|---|---|---|---|
+| PRES | (30, 1059, 1799) | 0 | 0 | True | 0 | True |
+| HGT | (30, 1059, 1799) | 0 | 0 | True | 0 | True |
+| TMP | (30, 1059, 1799) | 0 | 0 | True | 0 | True |
+| SPFH | (30, 1059, 1799) | 0 | 0 | True | 0 | True |
+| UGRD | (30, 1059, 1799) | 0 | 0 | True | 0 | True |
+| VGRD | (30, 1059, 1799) | 0 | 0 | True | 0 | True |
+| PRES_sfc | (1059, 1799) | 0 | 0 | True | 0 | True |
+| HGT_sfc | (1059, 1799) | 0 | 0 | True | 0 | True |
+| TMP_2m | (1059, 1799) | 0 | 0 | True | 0 | True |
+| DPT_2m | (1059, 1799) | 0 | 0 | True | 0 | True |
+| UGRD_10m | (1059, 1799) | 0 | 0 | True | 0 | True |
+| VGRD_10m | (1059, 1799) | 0 | 0 | True | 0 | True |
+| PRATE | (1059, 1799) | 0 | 0 | True | 0 | True |
+| APCP_1h | (1059, 1799) | 0 | 0 | True | 0 | True |
+| CSNOW | (1059, 1799) | 0 | 0 | True | 0 | True |
+| CICEP | (1059, 1799) | 0 | 0 | True | 0 | True |
+| CFRZR | (1059, 1799) | 0 | 0 | True | 0 | True |
+| CRAIN | (1059, 1799) | 0 | 0 | True | 0 | True |
+
+float64 (before float32 cast) worst max abs diff vs pygrib over all 192 messages: {'eccodes': 0.0, 'gribberish': 3.469446951953614e-18}
+
+grid metadata: GridMetadata(nx=1799, ny=1059, dx=3000.0, dy=3000.0, lon_0=-97.5, lat_0=38.5, lat_1=38.5, lat_2=38.5, earth_radius=6371229.0, shape_of_the_earth=6, lat_first=21.138123, lon_first=-122.71952799999997, x_first=-2697520.1425219304, y_first=-1587306.1525566624, i_scans_negatively=0, j_scans_positively=1, j_points_consecutive=0, row0_is_south=True, proj4='+proj=lcc +lat_0=38.5 +lon_0=-97.5 +lat_1=38.5 +lat_2=38.5 +R=6371229.0 +units=m +no_defs')
+pyproj first point x,y = -2697520.143, -1587306.153; reader = -2697520.143, -1587306.153
+max |pyproj(x,y of pygrib lat/lon) - reader xy_coords| = 0.0000 m, 0.0000 m
+pygrib lat row0 mean 23.28, last row mean 51.00 (row0_is_south=True)

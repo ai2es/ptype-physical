@@ -1,0 +1,256 @@
+{
+  "args": {
+    "engine": "onnx",
+    "weights": "/glade/work/dgagne/ptype_fast/weights/ptype_weights.npz",
+    "device": "cpu",
+    "threads": 128,
+    "keras_path": null,
+    "onnx_path": null,
+    "dtype": "float32",
+    "tf32": false,
+    "compile": false,
+    "no_pin": false,
+    "mode": "maxbatch",
+    "n_rows": 1905141,
+    "log2_min": 10,
+    "log2_max": 21,
+    "repeats": 3,
+    "warmup": 1,
+    "maxbatch_log2_min": 10,
+    "max_rows": 1073741824,
+    "ram_fraction": 0.8,
+    "out": "/glade/work/dgagne/ptype_fast/ptype-physical/benchmarks/results/derecho/engine_onnx_cpu128_maxbatch",
+    "json_out": null,
+    "md_append": false,
+    "label": ""
+  },
+  "hardware": {
+    "hostname": "dec0964",
+    "platform": "Linux-6.4.0-150600.23.53-default-x86_64-with-glibc2.38",
+    "processor": "x86_64",
+    "python": "3.12.11",
+    "cpu_count_logical": 256,
+    "cpu_count_physical": 128,
+    "ram_total_gb": 269.6,
+    "loadavg_1_5_15": [
+      56.03,
+      81.62,
+      108.48
+    ],
+    "env": {
+      "OMP_NUM_THREADS": "128",
+      "PBS_JOBID": "8207942.desched1"
+    },
+    "cpu_affinity_count": 256,
+    "torch": "2.15.0+cu132",
+    "cuda_available": false,
+    "mps_available": false,
+    "numpy": "2.5.5",
+    "onnxruntime": "1.32.0",
+    "numba": "0.68.1",
+    "keras": "3.15.1",
+    "onnxruntime_providers": [
+      "TensorrtExecutionProvider",
+      "CUDAExecutionProvider",
+      "CPUExecutionProvider"
+    ],
+    "blas": [
+      {
+        "api": "blas",
+        "lib": "openblas",
+        "threads": 64
+      },
+      {
+        "api": "blas",
+        "lib": "openblas",
+        "threads": 64
+      },
+      {
+        "api": "openmp",
+        "lib": "openmp",
+        "threads": 128
+      },
+      {
+        "api": "openmp",
+        "lib": "openmp",
+        "threads": 128
+      }
+    ]
+  },
+  "engine_config": {
+    "engine": "onnx",
+    "device": "cpu",
+    "threads": 128,
+    "providers": [
+      "CPUExecutionProvider"
+    ]
+  },
+  "maxrss_after_load_gb": 0.831758336,
+  "maxbatch": [
+    {
+      "rows": 1024,
+      "status": "ok",
+      "seconds": 0.0038441079668700695,
+      "rows_per_s": 266381.6960463148,
+      "peak_rss_gb": 0.854073344,
+      "rss_over_start_gb": 0.0,
+      "peak_gpu_alloc_gb": null,
+      "peak_gpu_reserved_gb": null
+    },
+    {
+      "rows": 2048,
+      "status": "ok",
+      "seconds": 0.0038390099070966244,
+      "rows_per_s": 533470.8817015964,
+      "peak_rss_gb": 0.919629824,
+      "rss_over_start_gb": 0.0,
+      "peak_gpu_alloc_gb": null,
+      "peak_gpu_reserved_gb": null
+    },
+    {
+      "rows": 4096,
+      "status": "ok",
+      "seconds": 0.005118347005918622,
+      "rows_per_s": 800258.3637380531,
+      "peak_rss_gb": 0.924643328,
+      "rss_over_start_gb": 0.0,
+      "peak_gpu_alloc_gb": null,
+      "peak_gpu_reserved_gb": null
+    },
+    {
+      "rows": 8192,
+      "status": "ok",
+      "seconds": 0.008990971837192774,
+      "rows_per_s": 911136.2095599407,
+      "peak_rss_gb": 0.933556224,
+      "rss_over_start_gb": 0.0,
+      "peak_gpu_alloc_gb": null,
+      "peak_gpu_reserved_gb": null
+    },
+    {
+      "rows": 16384,
+      "status": "ok",
+      "seconds": 0.017612871015444398,
+      "rows_per_s": 930228.8074234562,
+      "peak_rss_gb": 0.951382016,
+      "rss_over_start_gb": 0.0,
+      "peak_gpu_alloc_gb": null,
+      "peak_gpu_reserved_gb": null
+    },
+    {
+      "rows": 32768,
+      "status": "ok",
+      "seconds": 0.03831914905458689,
+      "rows_per_s": 855133.8119048757,
+      "peak_rss_gb": 1.013702656,
+      "rss_over_start_gb": 0.02824192,
+      "peak_gpu_alloc_gb": null,
+      "peak_gpu_reserved_gb": null
+    },
+    {
+      "rows": 65536,
+      "status": "ok",
+      "seconds": 0.0903284358792007,
+      "rows_per_s": 725530.1097834079,
+      "peak_rss_gb": 1.093480448,
+      "rss_over_start_gb": 0.078577664,
+      "peak_gpu_alloc_gb": null,
+      "peak_gpu_reserved_gb": null
+    },
+    {
+      "rows": 131072,
+      "status": "ok",
+      "seconds": 0.14702252903953195,
+      "rows_per_s": 891509.626832476,
+      "peak_rss_gb": 1.219985408,
+      "rss_over_start_gb": 0.1640448,
+      "peak_gpu_alloc_gb": null,
+      "peak_gpu_reserved_gb": null
+    },
+    {
+      "rows": 262144,
+      "status": "ok",
+      "seconds": 0.287233215989545,
+      "rows_per_s": 912652.107789448,
+      "peak_rss_gb": 1.600958464,
+      "rss_over_start_gb": 0.333193216,
+      "peak_gpu_alloc_gb": null,
+      "peak_gpu_reserved_gb": null
+    },
+    {
+      "rows": 524288,
+      "status": "ok",
+      "seconds": 0.5757720968686044,
+      "rows_per_s": 910582.5079947327,
+      "peak_rss_gb": 2.360160256,
+      "rss_over_start_gb": 0.668749824,
+      "peak_gpu_alloc_gb": null,
+      "peak_gpu_reserved_gb": null
+    },
+    {
+      "rows": 1048576,
+      "status": "ok",
+      "seconds": 1.0715412341523916,
+      "rows_per_s": 978568.0350690774,
+      "peak_rss_gb": 3.836563456,
+      "rss_over_start_gb": 1.306259456,
+      "peak_gpu_alloc_gb": null,
+      "peak_gpu_reserved_gb": null
+    },
+    {
+      "rows": 2097152,
+      "status": "ok",
+      "seconds": 2.210716176079586,
+      "rows_per_s": 948630.1419836818,
+      "peak_rss_gb": 7.711080448,
+      "rss_over_start_gb": 3.536601088,
+      "peak_gpu_alloc_gb": null,
+      "peak_gpu_reserved_gb": null
+    },
+    {
+      "rows": 4194304,
+      "status": "ok",
+      "seconds": 4.381600294960663,
+      "rows_per_s": 957253.9067116472,
+      "peak_rss_gb": 15.454027776,
+      "rss_over_start_gb": 7.070236672,
+      "peak_gpu_alloc_gb": null,
+      "peak_gpu_reserved_gb": null
+    },
+    {
+      "rows": 8388608,
+      "status": "ok",
+      "seconds": 9.137826140969992,
+      "rows_per_s": 918009.1490676511,
+      "peak_rss_gb": 30.954893312,
+      "rss_over_start_gb": 14.154989568,
+      "peak_gpu_alloc_gb": null,
+      "peak_gpu_reserved_gb": null
+    },
+    {
+      "rows": 16777216,
+      "status": "ok",
+      "seconds": 27.64612024091184,
+      "rows_per_s": 606856.074335248,
+      "peak_rss_gb": 61.970825216,
+      "rss_over_start_gb": 28.336246784,
+      "peak_gpu_alloc_gb": null,
+      "peak_gpu_reserved_gb": null
+    },
+    {
+      "rows": 33554432,
+      "status": "ok",
+      "seconds": 39.38517988100648,
+      "rows_per_s": 851955.7889890872,
+      "peak_rss_gb": 123.946532864,
+      "rss_over_start_gb": 56.680894464,
+      "peak_gpu_alloc_gb": null,
+      "peak_gpu_reserved_gb": null
+    },
+    {
+      "rows": 67108864,
+      "status": "SKIPPED: estimated 185.8 GB > 80% of 139.3 GB free RAM"
+    }
+  ],
+  "maxrss_lifetime_gb": 123.959115776
+}

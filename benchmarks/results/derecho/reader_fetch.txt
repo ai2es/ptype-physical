@@ -1,0 +1,14 @@
+key=hrrr.20231226/conus/hrrr.t00z.wrfnatf12.grib2  messages in file=1136  full file=790,950,105 B (754.3 MiB)  idx bytes=70,908
+idx fetch s: 0.179, 0.109 (median 0.144)
+N=30: 192 messages, 271,698,718 B needed (34.4% of file)
+
+| coalesce | GET requests (logged) | bytes requested (logged) | merged_ranges reqs / bytes | % of file | fetch s (each run) | median s | MiB/s |
+|---|---|---|---|---|---|---|---|
+| 0 | 67 | 271,698,718 | 67 / 271,698,718 | 34.4 | 2.26, 1.35 | 1.81 | 143.5 |
+| 65,536 | 67 | 271,698,718 | 67 / 271,698,718 | 34.4 | 1.22, 1.44 | 1.33 | 195.0 |
+| 1,048,576 | 66 | 272,030,280 | 66 / 272,030,280 | 34.4 | 1.51, 1.34 | 1.43 | 181.8 |
+| 4,194,304 | 6 | 442,474,046 | 6 / 442,474,046 | 55.9 | 12.63, 13.62 | 13.13 | 32.1 |
+| 16,777,216 | 2 | 460,042,516 | 2 / 460,042,516 | 58.2 | 81.62, 75.32 | 78.47 | 5.6 |
+| 67,108,864 | 2 | 460,042,516 | 2 / 460,042,516 | 58.2 | 30.74, 27.14 | 28.94 | 15.2 |
+
+cached 192 messages to /glade/derecho/scratch/dgagne/ptype_fast/reader_cache_files/f12_n30.pkl
