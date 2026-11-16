@@ -1,0 +1,16 @@
+#!/bin/bash
+#PBS -N ptype_engine_maxb
+#PBS -A NAML0001
+#PBS -q main
+#PBS -l select=1:ncpus=128:mpiprocs=1:ompthreads=128
+#PBS -l walltime=00:45:00
+#PBS -j oe
+# Largest inference batch that fits on one standard Derecho CPU node (128 cores, ~235 GB).
+# Split from engine_cpu.pbs because the thread-scaling sweep there uses the whole hour
+# (the single-thread runs are slow), so the max-batch search never started.
+source /glade/work/dgagne/ptype_fast/ptype-physical/benchmarks/pbs/common.sh
+W=$WEIGHTS/ptype_weights.npz
+for E in torch onnx numpy numba keras; do
+    EXTRA=""; [ $E = keras ] && EXTRA="--keras-path $PTYPE_FAST/model/ptype_model_20240909.keras"
+    timeout 480 python benchmarks/engine_benchmark.py --engine $E --device cpu --threads 128 --weights $W $EXTRA --mode maxbatch --max-rows 1073741824 --ram-fraction 0.8 --out $RESULTS/engine_${E}_cpu128_maxbatch || echo "FAILED or timed out: maxbatch $E"
+done
