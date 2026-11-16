@@ -41,7 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--forecast-hours", default=None, help="override the hours of every run, e.g. 0-18 or 11,12,13")
     p.add_argument("--processes", default=None, help="worker processes, an integer or 'auto' (0 = in-process)")
     p.add_argument("--threads", type=int, default=None, help="threads per worker process")
-    p.add_argument("--engine", default=None, choices=["auto", "torch", "onnx", "numpy", "numba"])
+    p.add_argument("--engine", default=None, choices=["torch", "onnx", "numpy", "numba"])
     p.add_argument("--device", default=None, help="cpu or cuda")
     p.add_argument("--weights", default=None, help="exported ptype_weights.npz")
     p.add_argument("--source", default=None, help="'s3' (NOAA bucket) or a local mirror directory")

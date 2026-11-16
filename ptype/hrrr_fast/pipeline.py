@@ -942,28 +942,6 @@ def _atomic_write_json(path: Path, obj: Any) -> None:
     os.replace(tmp, path)
 
 
-def resolve_engine_name(engine: str, device: str) -> str:
-    """Turn the ``auto`` engine setting into a concrete engine for the device in use.
-
-    Why ``numba`` on CPU: on a Derecho CPU node (128 cores, job 8207280) the numba kernel was the only
-    engine whose throughput kept scaling with threads (0.21 s per full-CONUS forecast hour at 128
-    threads against 1.3-2.1 s for torch, ONNX Runtime and NumPy, which stop scaling at 16-32 threads),
-    and it needs nothing beyond numpy and numba. At 8 threads the four engines are within about 25%
-    of each other, so the choice costs little in the many-workers layout. Why ``torch`` on a GPU:
-    numba's kernel is CPU only, and torch is the engine with a tested CUDA path.
-
-    Args:
-        engine: ``auto`` or an explicit engine name, which is returned unchanged.
-        device: ``cpu`` or a CUDA device string.
-
-    Returns:
-        The engine name to pass to ``make_engine``.
-    """
-    if engine != "auto":
-        return engine
-    return "torch" if device.startswith("cuda") else "numba"
-
-
 class WorkerContext:
     """Per-process state: config, source, the engine (loaded ONCE), level guesses and grid caches."""
 
@@ -994,9 +972,8 @@ class WorkerContext:
             device = "cuda:0"  # CUDA_VISIBLE_DEVICES already restricts this process to its one GPU
         opts = dict(self.cfg.engine_options)
         opts.setdefault("threads", self.threads)
-        name = resolve_engine_name(self.cfg.engine, device)
-        engine = make_engine(name, self.cfg.weights, device=device, **opts)
-        if name == "torch":
+        engine = make_engine(self.cfg.engine, self.cfg.weights, device=device, **opts)
+        if self.cfg.engine == "torch":
             import torch
 
             with contextlib.suppress(RuntimeError):  # can only be set before torch starts inter-op work
