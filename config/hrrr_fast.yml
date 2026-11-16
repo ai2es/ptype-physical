@@ -1,0 +1,61 @@
+# Settings of the fast HRRR precipitation-type pipeline (ptype/hrrr_fast/pipeline.py).
+# Every key is a field of ptype.hrrr_fast.config.PipelineConfig (see its docstring); any of them can be
+# overridden on the command line of applications/hrrr_ptype_run.py. Paths may use $VARS and ~.
+# Defaults are for a Derecho CPU node; the reasoning and measurements are in docs/hrrr_fast.md.
+
+# --- input --------------------------------------------------------------------------------------
+source: s3                      # public noaa-hrrr-bdp-pds bucket (anonymous); or a local mirror directory
+coalesce: 1048576               # obstore range merge threshold; 1 MiB adds no extra bytes on wrfnat
+fetch_retries: 5                # transient errors only; a missing file (404) is recorded, not retried
+fetch_backoff_s: 2.0
+fetch_max_backoff_s: 60.0
+
+# --- vertical levels ----------------------------------------------------------------------------
+n_levels: 27                    # first read for the 0-5000 m network grid; auto top-up if any column is short
+max_levels: 50
+level_step: 3
+bourgouin_top_m: 8000           # Bourgouin height grid top; see benchmarks/results/bourgouin_depth_local.md
+bourgouin_dz_m: 250
+bourgouin_rows_per_chunk: 128
+
+# --- 0 m policies (training-data provenance in benchmarks/results/columns_local.md) -------------
+surface_temperature: 2m
+surface_wind: 10m
+surface_pressure: surface
+pressure_interp: linear
+clip_surface_dewpoint: false
+
+# --- model ---------------------------------------------------------------------------------------
+weights: /glade/work/dgagne/ptype_fast/weights/ptype_weights.npz
+engine: torch                   # torch | onnx | numpy | numba
+device: cpu                     # cpu | cuda (one GPU per worker, round-robin)
+engine_options: {}              # e.g. {dtype: float16} or {tf32: true} on an A100
+batch_size: null                # engine default
+
+# --- parallelism (one node) ---------------------------------------------------------------------
+processes: auto                 # min(cores // threads_per_process, usable memory // memory_per_process_gb)
+threads_per_process: 8
+decode_threads: null            # = threads_per_process
+memory_per_process_gb: 12.0     # measured peak 9.7 GB per worker (pipeline_local.md) + margin
+memory_fraction: 0.8
+max_runs_in_flight: 2
+
+# --- output --------------------------------------------------------------------------------------
+work_dir: /glade/derecho/scratch/$USER/ptype_fast/runs
+pyramid_levels: 4
+location_chunk: 1024
+sounding_encoding: default      # writers default (0.1-unit int16); or int16-0.1 | int32-0.01 | lossless explicitly
+finalize_ptype: true            # writers.finalize_ptype_store once per run before upload (shards >= 128 KB for IA)
+keep_local: false
+
+# --- upload --------------------------------------------------------------------------------------
+upload: s3                      # s3 (aws s3 sync, $AWS_PROFILE) | local (copy to upload_root) | none
+upload_root: null
+bucket: wwe-ptype
+region: us-east-1
+aws_cli: aws
+storage_class: STANDARD_IA      # Zarr objects only; ptype/inits.json is written separately in STANDARD
+
+# --- logging -------------------------------------------------------------------------------------
+log_level: INFO
+log_json: true
