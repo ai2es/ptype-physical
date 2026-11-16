@@ -35,7 +35,7 @@ class PipelineConfig:
         work_dir: Where run directories are built (node-local or scratch disk). One sub-directory per init.
         weights: Exported ``ptype_weights.npz`` (``applications/export_ptype_weights.py``); the ONNX
             engine looks for ``ptype_model.onnx`` next to it.
-        engine: ``torch``, ``onnx``, ``numpy`` or ``numba`` (see ``ptype.hrrr_fast.engine``).
+        engine: ``auto`` (numba on CPU, torch on a GPU), ``torch``, ``onnx``, ``numpy`` or ``numba`` (see ``ptype.hrrr_fast.engine``).
         device: ``cpu`` or ``cuda``. With ``cuda`` every worker process is pinned to one GPU by
             ``CUDA_VISIBLE_DEVICES`` round-robin (see ``docs/hrrr_fast.md``).
         engine_options: Extra keyword arguments for ``make_engine`` (``dtype``, ``tf32``, ``compile`` ...).
@@ -95,7 +95,7 @@ class PipelineConfig:
     source: str = "s3"
     work_dir: str = "./hrrr_ptype_runs"
     weights: str = "ptype_weights.npz"
-    engine: str = "torch"
+    engine: str = "auto"
     device: str = "cpu"
     engine_options: dict[str, Any] = field(default_factory=dict)
     batch_size: int | None = None

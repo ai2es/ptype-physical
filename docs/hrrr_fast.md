@@ -87,9 +87,13 @@ angle is constant in a column), so it is done once, in place, on the 21-level so
 ### 2.5 Engine choice
 
 All engines take raw physical inputs; the scaler is folded into the first layer and the evidential head is in
-the graph, so no pandas and no extra pass over the 1.9 M × 84 matrix. On CPU, torch was fastest on the laptop
-(3.1 M rows/s on 14 threads; ONNX 2.4 M, numpy 2.3 M, numba 1.1 M; `engine_local.md`), so `engine: torch` is the
-default; inference is < 1 s of a ~10 s hour, so the choice is not critical. On a GPU node each worker runs torch
+the graph, so no pandas and no extra pass over the 1.9 M × 84 matrix. The default is `engine: auto`, which
+means numba on CPU nodes and torch on GPUs. On the laptop torch was fastest (3.1 M rows/s on 14 threads; ONNX
+2.4 M, numpy 2.3 M, numba 1.1 M; `engine_local.md`), but on a Derecho CPU node (128 cores, job 8207280) numba was
+the only engine that kept scaling with threads: 0.21 s per full-CONUS hour at 128 threads, against 1.3-2.1 s for
+torch, ONNX Runtime and NumPy, which stop scaling at 16-32 threads. At the driver's 8 threads per worker the four
+are within about 25% (torch 2.07 s, ONNX 1.98 s, numpy 2.26 s, numba 2.51 s), so the choice is not critical there;
+numba also has no dependency beyond numpy. On a GPU node each worker runs torch
 on its own GPU (2.8).
 
 ### 2.6 Bourgouin height grid

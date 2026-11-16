@@ -27,7 +27,7 @@ clip_surface_dewpoint: false
 
 # --- model ---------------------------------------------------------------------------------------
 weights: /glade/work/dgagne/ptype_fast/weights/ptype_weights.npz
-engine: torch                   # torch | onnx | numpy | numba
+engine: auto                    # auto (numba on CPU, torch on GPU) | torch | onnx | numpy | numba
 device: cpu                     # cpu | cuda (one GPU per worker, round-robin)
 engine_options: {}              # e.g. {dtype: float16} or {tf32: true} on an A100
 batch_size: null                # engine default

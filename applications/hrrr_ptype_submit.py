@@ -416,7 +416,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--index", default="s3://wwe-ptype/ptype/inits.json", help="s3://bucket/key or local inits.json")
     p.add_argument("--done-list", default=None, help="fallback: YYYYMMDDHH per line, or a local inits.json")
     p.add_argument("--config", default="config/hrrr_fast.yml")
-    p.add_argument("--engine", default="torch")
+    p.add_argument("--engine", default="auto", help="auto = numba on CPU nodes, torch on GPU nodes")
     p.add_argument("--threads", type=int, default=8)
     p.add_argument("--memory-per-process-gb", type=float, default=12.0, help="measured peak RSS per worker + margin")
     p.add_argument("--runs-per-job", type=int, default=None)

@@ -743,3 +743,13 @@ def test_real_finalize_produces_readable_store(weights, tmp_path):
     assert g.attrs["hrrr_ptype"].get("layout") == "finalized"
     assert np.all(np.isfinite(g["0/ML_rain"][2])) and np.all(np.isnan(g["0/ML_rain"][1]))
     assert not list((tmp_path / "bucket" / Path(pk).parent).glob("*.staging")) and not list((tmp_path / "bucket" / Path(pk).parent).glob("*finalize-tmp"))
+
+
+def test_auto_engine_is_numba_on_cpu_and_torch_on_gpu():
+    """``auto`` must pick numba on CPU nodes and torch on GPUs; explicit names pass through."""
+    from ptype.hrrr_fast.pipeline import resolve_engine_name
+
+    assert resolve_engine_name("auto", "cpu") == "numba"
+    assert resolve_engine_name("auto", "cuda") == "torch"
+    assert resolve_engine_name("auto", "cuda:0") == "torch"
+    assert resolve_engine_name("onnx", "cpu") == "onnx"
