@@ -1,0 +1,23 @@
+#!/bin/bash
+#PBS -N ptype_engine_cpu
+#PBS -A NAML0001
+#PBS -q main
+#PBS -l select=1:ncpus=128:mpiprocs=1:ompthreads=128
+#PBS -l walltime=01:00:00
+#PBS -j oe
+# Inference-engine benchmark on one standard Derecho CPU node (128 cores, ~235 GB).
+# Measures rows/s per batch size and searches for the largest batch that fits in memory,
+# for every engine, at several thread counts so thread scaling is measured rather than assumed.
+source /glade/work/dgagne/ptype_fast/ptype-physical/benchmarks/pbs/common.sh
+W=$WEIGHTS/ptype_weights.npz
+for T in 128 64 32 16 8 1; do
+    for E in torch onnx numpy numba; do
+        python benchmarks/engine_benchmark.py --engine $E --device cpu --threads $T --weights $W --mode throughput --out $RESULTS/engine_${E}_cpu${T} || echo "FAILED $E $T"
+    done
+done
+python benchmarks/engine_benchmark.py --engine keras --device cpu --threads 128 --keras-path $PTYPE_FAST/model/ptype_model_20240909.keras --weights $W --mode throughput --out $RESULTS/engine_keras_cpu128 || echo "FAILED keras"
+# Max batch: allow the search to use most of the node's memory.
+for E in torch onnx numpy numba keras; do
+    EXTRA=""; [ $E = keras ] && EXTRA="--keras-path $PTYPE_FAST/model/ptype_model_20240909.keras"
+    python benchmarks/engine_benchmark.py --engine $E --device cpu --threads 128 --weights $W $EXTRA --mode maxbatch --max-rows 1073741824 --ram-fraction 0.8 --out $RESULTS/engine_${E}_cpu128_maxbatch || echo "FAILED maxbatch $E"
+done
