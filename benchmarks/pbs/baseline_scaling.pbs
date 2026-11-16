@@ -7,6 +7,7 @@
 #PBS -j oe
 # Scaling reference: ORIGINAL inference, f00-f18 (19 files), script's own multiprocessing.Pool.
 # Usage: qsub -v NPROCS="4 8" benchmarks/pbs/baseline_scaling.pbs
+#   optional: -v NPROCS=1,PRE="taskset -c 0",TAG=_taskset  (pin to one core; run dir gets the TAG suffix)
 set -uo pipefail
 export PTYPE_FAST=/glade/work/dgagne/ptype_fast
 export REPO=$PTYPE_FAST/ptype-physical
@@ -18,11 +19,11 @@ cd $REPO
 echo "host=$(hostname) job=${PBS_JOBID:-none} commit=$(git rev-parse --short HEAD) date=$(date -u +%FT%TZ)"
 CFG=config/inference_baseline_20240909.yml
 for N in ${NPROCS:-1}; do
-    RUN=$BL/runs/scaling_n$N; rm -rf $RUN; mkdir -p $RUN
+    RUN=$BL/runs/scaling_n${N}${TAG:-}; rm -rf $RUN; mkdir -p $RUN
     ( while true; do echo "$(date +%s) $(free -m | awk 'NR==2{print $3}')" >> $RUN/node_mem_used_mb.txt; sleep 5; done ) &
     SAMP=$!
     echo "=== n_procs=$N ==="
-    /usr/bin/time -v python benchmarks/baseline_run.py -c $CFG --out-dir $RUN --fxx-start 0 --fxx-end 18 --n-procs $N
+    /usr/bin/time -v ${PRE:-} python benchmarks/baseline_run.py -c $CFG --out-dir $RUN --fxx-start 0 --fxx-end 18 --n-procs $N
     echo "exit=$?"
     kill $SAMP
     ls $RUN/out/hrrr/*/*/ 2>/dev/null | wc -l
