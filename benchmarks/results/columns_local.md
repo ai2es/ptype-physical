@@ -59,8 +59,8 @@ inputs, outputs float32. Best of 3 runs, after JIT warm-up. Threads set with `nu
 | `build_soundings` + wind rotation | 0.604 | 0.080 | 7.6x |
 | `network_inputs` ((n, 84) float32 copy) | 0.064 | 0.012 | 5.2x |
 | `wet_bulb_temperature` (21 levels, 40 M points) | 10.315 | 1.091 | 9.5x |
-| `modified_bourgouin` (Tw given) | 0.963 | 0.125 | 7.7x |
-| `modified_bourgouin_from_sounding` (incl. wet bulb) | 10.690 | 1.158 | 9.2x |
+| `legacy_repo_bourgouin` (Tw given) | 0.963 | 0.125 | 7.7x |
+| `legacy_repo_bourgouin_from_sounding` (incl. wet bulb) | 10.690 | 1.158 | 9.2x |
 
 So sounding preparation for the network (build + 84-column matrix) is ~0.7 s on one thread and
 ~0.08 s on 14; the Bourgouin diagnostic is dominated by the wet-bulb temperature (~96 % of its time).
