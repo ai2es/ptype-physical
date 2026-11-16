@@ -13,12 +13,12 @@ set +e
 OUT=$RESULTS/network_cpu_sources_${PBS_JOBID%%.*}.json
 NB() { python benchmarks/network_benchmark.py "$@" --out "$OUT" 2>&1; }
 echo "node=$(hostname)"
-echo "## does the GCS mirror match AWS (idx offsets, sizes, SHA-256 of every selected range of f12)"
-python benchmarks/network_benchmark.py compare-sources --out "$OUT" 2>&1
-echo "## same obstore loop, each source, 1 and 8 processes"
-for S in aws gcs aws-http gcs-http; do NB sweep --label src_$S --source $S --procs 1 8; done
-echo "## GCS at higher concurrency"
-NB sweep --label src_gcs --source gcs --procs 16 32
+# Order matters: the network was found to be slow (about 2 MB/s per process), so each test takes minutes and the
+# most informative ones (raw link speed, the alternative sources) run first, the consistency check last.
 echo "## whole-file curl (different file per stream), 1 and 8 streams"
 for S in aws gcs; do NB curl --label curl --source $S --procs 1 8; done
+echo "## same obstore loop, each source, 1 and 8 processes"
+for S in gcs aws-http aws; do NB sweep --label src_$S --source $S --procs 1 8; done
+echo "## does the GCS mirror match AWS (idx offsets, sizes, SHA-256 of the first 20 selected ranges and the last range of f12)"
+python benchmarks/network_benchmark.py compare-sources --out "$OUT" 2>&1
 echo "done $(date -u +%FT%TZ)"

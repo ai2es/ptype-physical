@@ -299,7 +299,7 @@ def cmd_curl(args: argparse.Namespace) -> None:
 
 
 def cmd_compare_sources(args: argparse.Namespace) -> None:
-    """Compare AWS and GCS: idx text, object size, and SHA-256 of every selected range for ``--hours``."""
+    """Compare AWS and GCS: idx offsets, object size, and SHA-256 of selected ranges for ``--hours``."""
     import obstore
 
     aws, gcs = make_store("aws"), make_store("gcs")
@@ -324,6 +324,10 @@ def cmd_compare_sources(args: argparse.Namespace) -> None:
         }
         if fxx in args.hash_hours:
             _, starts, ends = prepare_ranges(aws, fxx)
+            # Hash only the first ``hash_ranges`` messages plus the last one (whose end comes from the file size): when the
+            # network is slow, hashing a whole selection from two sources would use most of a job's walltime.
+            keep = [*range(min(args.hash_ranges, len(starts) - 1)), len(starts) - 1]
+            starts, ends = [starts[j] for j in keep], [ends[j] for j in keep]
             ra = obstore.get_ranges(aws, key, starts=starts, ends=ends)
             rg = obstore.get_ranges(gcs, key, starts=starts, ends=ends)
             same = [hashlib.sha256(bytes(a)).digest() == hashlib.sha256(bytes(g)).digest() for a, g in zip(ra, rg, strict=True)]
@@ -359,6 +363,7 @@ def main() -> None:
     k.add_argument("--out")
     k.add_argument("--hours", type=int, nargs="+", default=[0, 1, 12, 24, 31])
     k.add_argument("--hash-hours", type=int, nargs="+", default=[12])
+    k.add_argument("--hash-ranges", type=int, default=20, help="number of leading messages to hash (plus the last message)")
     k.set_defaults(func=cmd_compare_sources)
     args = ap.parse_args()
     args.func(args)
