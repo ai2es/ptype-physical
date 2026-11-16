@@ -194,6 +194,11 @@ class PlannedMessage:
     entry: IdxEntry
 
 
+#: Per-variable hybrid level request: a count ``n`` (levels 1..n, i.e. 0-based indices ``0..n-1``) or a
+#: half-open 0-based index range ``(lo, hi)`` (hybrid levels ``lo+1 .. hi``), used for top-up reads.
+LevelSpec = int | tuple[int, int]
+
+
 @dataclass
 class ReadPlan:
     """The messages to read from one file, sorted by byte offset.
@@ -204,14 +209,21 @@ class ReadPlan:
 
     Attributes:
         messages: Planned messages in ascending file offset.
-        n_levels: Number of hybrid levels requested.
+        n_levels: Highest hybrid level requested for any variable (the uniform count when all are equal).
         fxx: Forecast hour the plan was built for.
+        hybrid_variables: Hybrid variables in the plan.
+        level_ranges: Per hybrid variable, the half-open 0-based level-index range ``(lo, hi)`` it was
+            planned for. :func:`decode` sizes each cube to ``hi - lo`` levels from this, so variables
+            requested on different numbers of levels each get a cube of their own depth. ``None`` (for
+            plans assembled by hand) means ``(0, n_levels)`` for every variable in ``hybrid_variables``,
+            which is the original uniform behaviour.
     """
 
     messages: list[PlannedMessage]
     n_levels: int
     fxx: int
     hybrid_variables: tuple[str, ...] = field(default=HYBRID_VARIABLES)
+    level_ranges: dict[str, tuple[int, int]] | None = None
 
     @property
     def starts(self) -> list[int]:
@@ -221,6 +233,36 @@ class ReadPlan:
     def total_bytes(self) -> int:
         """Sum of message sizes (exact bytes needed, before any coalescing)."""
         return sum(m.entry.size or 0 for m in self.messages)
+
+    def expected_level_ranges(self) -> dict[str, tuple[int, int]]:
+        """The ``(lo, hi)`` level-index range every hybrid variable must fill in :func:`decode`."""
+        if self.level_ranges is not None:
+            return dict(self.level_ranges)
+        return {v: (0, self.n_levels) for v in self.hybrid_variables}
+
+
+def _normalize_level_spec(n_levels: int | dict[str, LevelSpec], hybrid_variables: Sequence[str]) -> dict[str, tuple[int, int]]:
+    """Turn the ``n_levels`` argument of :func:`select_messages` into ``{variable: (lo, hi)}``.
+
+    The int form keeps the original contract (every variable on levels 1..n, n >= 1). The mapping form
+    lets each variable have its own depth; a count of 0 or an empty range drops that variable, which is
+    what an incremental top-up needs when only some variables need more levels.
+    """
+    if isinstance(n_levels, int):
+        if n_levels < 1:
+            raise ValueError("n_levels must be >= 1")
+        return {v: (0, n_levels) for v in hybrid_variables}
+    ranges: dict[str, tuple[int, int]] = {}
+    for var, spec in n_levels.items():
+        if isinstance(spec, int):
+            lo, hi = 0, spec
+        else:
+            lo, hi = (int(x) for x in spec)
+        if lo < 0 or hi < lo:
+            raise ValueError(f"invalid level spec for {var}: {spec!r} (need count >= 0 or 0 <= lo <= hi)")
+        if hi > lo:
+            ranges[var] = (lo, hi)
+    return ranges
 
 
 def _select_apcp_1h(entries: Sequence[IdxEntry], fxx: int) -> IdxEntry:
@@ -246,7 +288,7 @@ def _select_apcp_1h(entries: Sequence[IdxEntry], fxx: int) -> IdxEntry:
 
 def select_messages(
     entries: Sequence[IdxEntry],
-    n_levels: int,
+    n_levels: int | dict[str, LevelSpec],
     fxx: int,
     hybrid_variables: Sequence[str] = HYBRID_VARIABLES,
     surface_fields: dict[str, tuple[str, str]] | None = None,
@@ -261,7 +303,12 @@ def select_messages(
 
     Args:
         entries: Output of :func:`parse_idx`.
-        n_levels: Number of hybrid levels to read, starting at hybrid level 1 (nearest the ground).
+        n_levels: Either an int ``n`` (every variable in ``hybrid_variables`` on hybrid levels 1..n, the
+            level nearest the ground first), or a mapping ``{variable: spec}`` giving each hybrid variable its
+            own depth, where ``spec`` is a count ``n`` (levels 1..n) or a 0-based half-open index range
+            ``(lo, hi)`` (hybrid levels ``lo+1..hi``, for top-up reads). With a mapping, its keys are the
+            hybrid variables and ``hybrid_variables`` is ignored; variables with a count of 0 or an empty
+            range are left out. Example: ``{"TMP": 34, "SPFH": 34, "PRES": 34, "HGT": 34, "UGRD": 27, "VGRD": 27}``.
         fxx: Forecast hour of the file; used to pick the 1-hour APCP window.
         hybrid_variables: Variables to read on each hybrid level.
         surface_fields: Mapping of output name to ``(variable, level)``; defaults to :data:`SURFACE_FIELDS`.
@@ -272,20 +319,20 @@ def select_messages(
 
     Raises:
         KeyError: If a required message is missing or ambiguous.
-        ValueError: If ``n_levels`` is not positive.
+        ValueError: If an int ``n_levels`` is not positive or a mapping spec is malformed.
     """
-    if n_levels < 1:
-        raise ValueError("n_levels must be >= 1")
+    ranges = _normalize_level_spec(n_levels, hybrid_variables)
     surface_fields = SURFACE_FIELDS if surface_fields is None else surface_fields
-    wanted_hybrid = set(hybrid_variables)
+    wanted_hybrid = set(ranges)
     by_key: dict[tuple[str, str], list[IdxEntry]] = {}
     planned: list[PlannedMessage] = []
     for e in entries:
         m = _HYBRID_RE.match(e.level)
         if m and e.variable in wanted_hybrid:
-            level = int(m.group(1))
-            if 1 <= level <= n_levels:
-                planned.append(PlannedMessage(e.variable, level - 1, e))
+            lo, hi = ranges[e.variable]
+            index = int(m.group(1)) - 1
+            if lo <= index < hi:
+                planned.append(PlannedMessage(e.variable, index, e))
             continue
         if parse_step_kind_is_inst(e.step):
             by_key.setdefault((e.variable, e.level), []).append(e)
@@ -293,7 +340,7 @@ def select_messages(
     # Every requested (variable, level) must be present exactly once; a gap would otherwise
     # surface much later as an array of zeros in the decoded cube.
     found = {(p.name, p.level_index) for p in planned}
-    missing = [f"{v}:{lv + 1} hybrid level" for v in hybrid_variables for lv in range(n_levels) if (v, lv) not in found]
+    missing = [f"{v}:{lv + 1} hybrid level" for v, (lo, hi) in ranges.items() for lv in range(lo, hi) if (v, lv) not in found]
     if missing:
         raise KeyError(f"missing hybrid-level messages: {missing[:6]}{' ...' if len(missing) > 6 else ''}")
     if len(found) != len(planned):
@@ -307,7 +354,15 @@ def select_messages(
     if include_apcp:
         planned.append(PlannedMessage(APCP_NAME, None, _select_apcp_1h(entries, fxx)))
     planned.sort(key=lambda p: p.entry.offset)
-    return ReadPlan(messages=planned, n_levels=n_levels, fxx=fxx, hybrid_variables=tuple(hybrid_variables))
+    return ReadPlan(
+        messages=planned,
+        # The int form keeps reporting the requested count (unchanged behaviour); the mapping form
+        # reports the deepest variable.
+        n_levels=n_levels if isinstance(n_levels, int) else max((hi for _, hi in ranges.values()), default=0),
+        fxx=fxx,
+        hybrid_variables=tuple(ranges),
+        level_ranges=ranges,
+    )
 
 
 def parse_step_kind_is_inst(step: str) -> bool:
@@ -505,6 +560,31 @@ def _decode_task(args: tuple[bytes, str]) -> np.ndarray:
     return decode_message(buf, decoder)
 
 
+def _check_plan_levels(plan: ReadPlan) -> dict[str, tuple[int, int]]:
+    """Verify that the plan fills every expected level slot exactly once; return the level ranges.
+
+    Done before any decoding so a malformed plan fails fast with a message naming the gaps, rather
+    than after seconds of decoding (or, worse, returning cubes with levels that were never written).
+    """
+    ranges = plan.expected_level_ranges()
+    seen: dict[str, set[int]] = {v: set() for v in ranges}
+    for pm in plan.messages:
+        if pm.level_index is None:
+            continue
+        if pm.name not in ranges:
+            raise ValueError(f"plan has a hybrid message for {pm.name!r} but no level range for it (known: {sorted(ranges)})")
+        lo, hi = ranges[pm.name]
+        if not lo <= pm.level_index < hi:
+            raise ValueError(f"{pm.name} level index {pm.level_index} is outside its planned range [{lo}, {hi})")
+        if pm.level_index in seen[pm.name]:
+            raise ValueError(f"duplicate message for {pm.name} level index {pm.level_index}")
+        seen[pm.name].add(pm.level_index)
+    missing = [f"{v}:{i + 1} hybrid level" for v, (lo, hi) in ranges.items() for i in range(lo, hi) if i not in seen[v]]
+    if missing:
+        raise ValueError(f"plan is missing {len(missing)} hybrid-level message(s): {missing[:6]}{' ...' if len(missing) > 6 else ''}")
+    return ranges
+
+
 def decode(
     plan: ReadPlan,
     messages: Sequence,
@@ -514,26 +594,39 @@ def decode(
 ) -> dict[str, np.ndarray]:
     """Decode fetched messages into named float32 arrays.
 
-    Arrays are preallocated once and each decoded message is written into its slot, so the
-    thread path never concatenates or copies a 3D cube. With ``pool="process"`` the message bytes
-    are pickled to the workers and the decoded arrays pickled back, which costs ~8 MB of IPC per
-    3D slice; that overhead is part of what the benchmark measures.
+    Each hybrid variable gets a cube sized to ITS OWN planned level range (``plan.level_ranges``), so a
+    plan that reads TMP on 34 levels and UGRD on 27 returns ``TMP.shape[0] == 34`` and
+    ``UGRD.shape[0] == 27``. Cube level ``k`` holds 0-based level index ``lo + k`` (hybrid level
+    ``lo + k + 1``); for the usual ``lo = 0`` that is simply surface-upward from hybrid level 1.
+
+    Cubes are allocated once, NaN-filled (never ``np.empty``) and each decoded message is written into
+    its slot, so the thread path never concatenates or copies a 3D cube and no uninitialised memory
+    can leak out. The plan is checked before decoding: every expected level slot must have exactly one
+    message. With ``pool="process"`` the message bytes are pickled to the workers and the decoded
+    arrays pickled back, which costs ~8 MB of IPC per 3D slice.
 
     Args:
-        plan: The plan the messages were fetched with (gives names and level indices).
+        plan: The plan the messages were fetched with (gives names, level indices and level ranges).
         messages: Buffers from :func:`fetch_ranges`, in plan order.
         decoder: ``"eccodes"``, ``"pygrib"`` or ``"gribberish"``.
         workers: Number of workers; ``1`` decodes serially in the calling thread.
         pool: ``"thread"`` or ``"process"``.
 
     Returns:
-        ``{name: array}``; 3D hybrid fields are ``(n_levels, ny, nx)`` ordered surface-upward,
+        ``{name: array}``; 3D hybrid fields are ``(hi - lo, ny, nx)`` ordered surface-upward,
         2D fields are ``(ny, nx)``.
+
+    Raises:
+        ValueError: On a message-count mismatch, unknown decoder/pool, or a plan whose hybrid messages do
+            not cover every expected level exactly once.
     """
     if len(messages) != len(plan.messages):
         raise ValueError(f"got {len(messages)} messages for a plan of {len(plan.messages)}")
     if decoder not in DECODERS:
         raise ValueError(f"unknown decoder {decoder!r}; choose from {sorted(DECODERS)}")
+    if workers > 1 and pool not in ("thread", "process"):
+        raise ValueError(f"pool must be 'thread' or 'process', not {pool!r}")
+    ranges = _check_plan_levels(plan)
 
     out: dict[str, np.ndarray] = {}
 
@@ -541,28 +634,30 @@ def decode(
         if pm.level_index is None:
             out[pm.name] = arr
             return
+        lo, hi = ranges[pm.name]
         cube = out.get(pm.name)
         if cube is None:
-            cube = out[pm.name] = np.empty((plan.n_levels, *arr.shape), dtype=np.float32)
-        cube[pm.level_index] = arr
+            # The grid shape is only known once a message is decoded, hence the lazy allocation.
+            cube = out[pm.name] = np.full((hi - lo, *arr.shape), np.nan, dtype=np.float32)
+        cube[pm.level_index - lo] = arr
 
     if workers <= 1:
         for pm, buf in zip(plan.messages, messages, strict=True):
             store(pm, decode_message(buf, decoder))
-        return out
-
-    if pool == "thread":
+    elif pool == "thread":
         with ThreadPoolExecutor(max_workers=workers) as ex:
             results = ex.map(lambda b: decode_message(b, decoder), messages)
             for pm, arr in zip(plan.messages, results, strict=True):
                 store(pm, arr)
-    elif pool == "process":
+    else:
         with ProcessPoolExecutor(max_workers=workers) as ex:
             results = ex.map(_decode_task, [(bytes(b), decoder) for b in messages], chunksize=max(1, len(messages) // (4 * workers)))
             for pm, arr in zip(plan.messages, results, strict=True):
                 store(pm, arr)
-    else:
-        raise ValueError(f"pool must be 'thread' or 'process', not {pool!r}")
+    # _check_plan_levels guarantees every slot had a message; this guards the invariant cheaply.
+    absent = [v for v in ranges if v not in out]
+    if absent:
+        raise ValueError(f"no messages decoded for hybrid variables {absent}")
     return out
 
 

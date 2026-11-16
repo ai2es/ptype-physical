@@ -250,3 +250,103 @@ def test_read_real_file_from_s3():
     # hybrid level 2 lies above level 1 everywhere
     assert np.all(fields["HGT"][1] > fields["HGT"][0])
     assert np.all(fields["HGT"][0] > fields["HGT_sfc"])
+
+
+# --------------------------------------------------------------------------------------------
+# Per-variable level counts
+# --------------------------------------------------------------------------------------------
+MIXED = {"TMP": 5, "SPFH": 5, "PRES": 5, "HGT": 5, "UGRD": 3, "VGRD": 3}
+
+
+def _fake_level_decoder(monkeypatch):
+    """Register a decoder whose output is the hybrid level number encoded in the message bytes."""
+    monkeypatch.setitem(reader.DECODERS, "fake", lambda b: np.full((3, 5), int.from_bytes(bytes(b), "little"), dtype=np.float64))
+
+
+def _level_bytes(plan):
+    return [(int(m.entry.level.split()[0]) if m.level_index is not None else 0).to_bytes(2, "little") for m in plan.messages]
+
+
+def test_select_messages_mixed_level_counts():
+    entries = reader.parse_idx(make_idx(6, SURFACE_F12))
+    plan = reader.select_messages(entries, n_levels=MIXED, fxx=12)
+    counts = {v: sum(1 for m in plan.messages if m.name == v) for v in MIXED}
+    assert counts == MIXED
+    assert plan.level_ranges == {v: (0, n) for v, n in MIXED.items()}
+    assert plan.n_levels == 5
+    assert set(plan.hybrid_variables) == set(MIXED)
+    assert plan.starts == sorted(plan.starts)
+    # surface fields and APCP are still selected with the mapping form
+    assert len(plan.messages) == sum(MIXED.values()) + len(reader.SURFACE_FIELDS) + 1
+
+
+def test_select_messages_int_form_unchanged():
+    entries = reader.parse_idx(make_idx(4, SURFACE_F12))
+    plan_int = reader.select_messages(entries, n_levels=3, fxx=12)
+    plan_map = reader.select_messages(entries, n_levels=dict.fromkeys(reader.HYBRID_VARIABLES, 3), fxx=12)
+    assert plan_int.messages == plan_map.messages
+    assert plan_int.n_levels == 3
+    assert plan_int.level_ranges == dict.fromkeys(reader.HYBRID_VARIABLES, (0, 3))
+
+
+def test_select_messages_level_ranges_and_empty():
+    entries = reader.parse_idx(make_idx(6, SURFACE_F12))
+    # top-up: thermo levels 4..6 (indices 3..5); wind needs nothing more (empty range is dropped)
+    spec = {"TMP": (3, 6), "HGT": (3, 6), "UGRD": (2, 2), "VGRD": 0}
+    plan = reader.select_messages(entries, n_levels=spec, fxx=12, surface_fields={}, include_apcp=False)
+    assert plan.level_ranges == {"TMP": (3, 6), "HGT": (3, 6)}
+    assert sorted(m.entry.level for m in plan.messages if m.name == "TMP") == ["4 hybrid level", "5 hybrid level", "6 hybrid level"]
+    with pytest.raises(ValueError):
+        reader.select_messages(entries, n_levels={"TMP": (4, 2)}, fxx=12)
+    with pytest.raises(ValueError):
+        reader.select_messages(entries, n_levels={"TMP": -1}, fxx=12)
+    with pytest.raises(KeyError, match="TMP:7 hybrid level"):
+        reader.select_messages(entries, n_levels={"TMP": 7}, fxx=12)
+
+
+def test_decode_mixed_level_counts_sizes_each_cube(monkeypatch):
+    _fake_level_decoder(monkeypatch)
+    plan = reader.select_messages(reader.parse_idx(make_idx(6, SURFACE_F12)), n_levels=MIXED, fxx=12)
+    msgs = _level_bytes(plan)
+    for workers in (1, 4):
+        out = reader.decode(plan, msgs, decoder="fake", workers=workers)
+        for v, n in MIXED.items():
+            assert out[v].shape == (n, 3, 5)
+            assert not np.isnan(out[v]).any()
+            np.testing.assert_array_equal(out[v][:, 0, 0], np.arange(1, n + 1))
+
+
+def test_decode_level_range_offsets(monkeypatch):
+    _fake_level_decoder(monkeypatch)
+    plan = reader.select_messages(reader.parse_idx(make_idx(6, SURFACE_F12)), n_levels={"TMP": (3, 6), "UGRD": 2}, fxx=12, surface_fields={}, include_apcp=False)
+    out = reader.decode(plan, _level_bytes(plan), decoder="fake")
+    np.testing.assert_array_equal(out["TMP"][:, 0, 0], [4, 5, 6])
+    np.testing.assert_array_equal(out["UGRD"][:, 0, 0], [1, 2])
+
+
+def test_decode_raises_on_missing_or_stray_messages(monkeypatch):
+    _fake_level_decoder(monkeypatch)
+    plan = reader.select_messages(reader.parse_idx(make_idx(6, SURFACE_F12)), n_levels=MIXED, fxx=12)
+    msgs = _level_bytes(plan)
+    # drop UGRD level 3: decode must refuse instead of returning an unfilled slot
+    drop = next(i for i, m in enumerate(plan.messages) if m.name == "UGRD" and m.level_index == 2)
+    short = reader.ReadPlan(plan.messages[:drop] + plan.messages[drop + 1 :], plan.n_levels, plan.fxx, plan.hybrid_variables, plan.level_ranges)
+    with pytest.raises(ValueError, match="UGRD:3 hybrid level"):
+        reader.decode(short, msgs[:drop] + msgs[drop + 1 :], decoder="fake")
+    # a hand-built plan without level_ranges uses n_levels for every variable (old behaviour), so a
+    # variable planned on fewer levels is reported as missing rather than returned half-empty
+    legacy = reader.ReadPlan(plan.messages, plan.n_levels, plan.fxx, plan.hybrid_variables)
+    with pytest.raises(ValueError, match="UGRD:4 hybrid level"):
+        reader.decode(legacy, msgs, decoder="fake")
+    # a message outside its planned range is rejected
+    narrow = reader.ReadPlan(plan.messages, plan.n_levels, plan.fxx, plan.hybrid_variables, {**plan.level_ranges, "TMP": (0, 4)})
+    with pytest.raises(ValueError, match="outside"):
+        reader.decode(narrow, msgs, decoder="fake")
+
+
+def test_decode_uniform_cubes_have_no_nan(monkeypatch):
+    _fake_level_decoder(monkeypatch)
+    plan = reader.select_messages(reader.parse_idx(make_idx(4, SURFACE_F12)), n_levels=4, fxx=12)
+    out = reader.decode(plan, _level_bytes(plan), decoder="fake", workers=3)
+    for v in reader.HYBRID_VARIABLES:
+        assert out[v].shape == (4, 3, 5) and not np.isnan(out[v]).any()
