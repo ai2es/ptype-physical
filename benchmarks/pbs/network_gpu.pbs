@@ -1,0 +1,10 @@
+#!/bin/bash
+#PBS -N net_gpu
+#PBS -A NAML0001
+#PBS -q main
+#PBS -l select=1:ncpus=64:mpiprocs=1:ngpus=4
+#PBS -l walltime=00:30:00
+#PBS -j oe
+# Same suite as network_cpu.pbs on a GPU node (64 cores) to see whether GPU nodes differ from CPU nodes.
+export NODE_TAG=gpu
+exec bash /glade/work/dgagne/ptype_fast/ptype-physical/benchmarks/pbs/network_cpu.pbs

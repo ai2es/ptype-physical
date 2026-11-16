@@ -1,0 +1,38 @@
+#!/bin/bash
+#PBS -N net_2node
+#PBS -A NAML0001
+#PBS -q main
+#PBS -l select=2:ncpus=128:mpiprocs=1
+#PBS -l walltime=00:30:00
+#PBS -j oe
+# Is download bandwidth shared between nodes? One 2-node job (so both nodes are guaranteed to run at the same
+# time; two single-node jobs can start hours apart in the queue). Node A and node B each run the load below
+# from a common wall-clock start, launched over ssh. Solo runs of each node in the same job give the baseline.
+export RESULTS=/glade/derecho/scratch/dgagne/ptype_fast/net
+source /glade/work/dgagne/ptype_fast/ptype-physical/benchmarks/pbs/common.sh
+set +e
+J=${PBS_JOBID%%.*}
+mapfile -t NODES < <(sort -u "$PBS_NODEFILE")
+A=${NODES[0]}; B=${NODES[1]}
+echo "nodes A=$A B=$B"
+run() {  # run NODE PROCS OFFSET START LABEL : launch one node's sweep in the background
+    local node=$1 procs=$2 off=$3 start=$4 label=$5
+    ssh -o BatchMode=yes "$node" "source $PTYPE_FAST/venv/bin/activate; export PYTHONPATH=$REPO; cd $REPO; python benchmarks/network_benchmark.py sweep --label $label --procs $procs --fxx-offset $off --start-at $start --out $RESULTS/network_2node_${J}_${node}.json" 2>&1 | sed "s/^/[$node] /" &
+}
+step() {  # step LABEL "A|B|AB" PROCS : both nodes start at the same epoch second
+    local label=$1 who=$2 procs=$3
+    local start=$(( $(date +%s) + 45 ))
+    echo "## $label who=$who procs=$procs start=$start"
+    [[ $who == *A* ]] && run "$A" "$procs" 0 "$start" "$label"
+    [[ $who == *B* ]] && run "$B" "$procs" 16 "$start" "$label"
+    wait
+}
+# clock check: both nodes' time at (nearly) the same instant
+echo "clock A: $(ssh -o BatchMode=yes $A date +%s.%N)  clock B: $(ssh -o BatchMode=yes $B date +%s.%N)"
+step soloA_16 A 16
+step both_16 AB 16
+step soloB_16 B 16
+step soloA_8 A 8
+step both_8 AB 8
+step both_16_repeat AB 16
+echo "done $(date -u +%FT%TZ)"

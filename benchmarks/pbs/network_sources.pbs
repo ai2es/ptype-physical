@@ -1,0 +1,24 @@
+#!/bin/bash
+#PBS -N net_src
+#PBS -A NAML0001
+#PBS -q main
+#PBS -l select=1:ncpus=128:mpiprocs=1
+#PBS -l walltime=00:30:00
+#PBS -j oe
+# Alternative sources for the same HRRR file on a CPU node: AWS S3Store (control), AWS HTTPS (HTTPStore),
+# Google Cloud mirror (GCSStore and HTTPStore) with the same obstore loop, and whole-file curl as a raw link reference.
+export RESULTS=/glade/derecho/scratch/dgagne/ptype_fast/net
+source /glade/work/dgagne/ptype_fast/ptype-physical/benchmarks/pbs/common.sh
+set +e
+OUT=$RESULTS/network_cpu_sources_${PBS_JOBID%%.*}.json
+NB() { python benchmarks/network_benchmark.py "$@" --out "$OUT" 2>&1; }
+echo "node=$(hostname)"
+echo "## does the GCS mirror match AWS (idx offsets, sizes, SHA-256 of every selected range of f12)"
+python benchmarks/network_benchmark.py compare-sources --out "$OUT" 2>&1
+echo "## same obstore loop, each source, 1 and 8 processes"
+for S in aws gcs aws-http gcs-http; do NB sweep --label src_$S --source $S --procs 1 8; done
+echo "## GCS at higher concurrency"
+NB sweep --label src_gcs --source gcs --procs 16 32
+echo "## whole-file curl (different file per stream), 1 and 8 streams"
+for S in aws gcs; do NB curl --label curl --source $S --procs 1 8; done
+echo "done $(date -u +%FT%TZ)"
