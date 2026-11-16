@@ -1,0 +1,16 @@
+{
+  "CORSRules": [
+    {
+      "ID": "ptype-website-read",
+      "AllowedOrigins": [
+        "https://ai2es.github.io",
+        "http://localhost:*",
+        "http://127.0.0.1:*"
+      ],
+      "AllowedMethods": ["GET", "HEAD"],
+      "AllowedHeaders": ["*"],
+      "ExposeHeaders": ["ETag", "Content-Length", "Content-Range", "Accept-Ranges"],
+      "MaxAgeSeconds": 3600
+    }
+  ]
+}

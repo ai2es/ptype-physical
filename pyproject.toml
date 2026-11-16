@@ -48,3 +48,6 @@ line-length = 180
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
+
+[tool.pytest.ini_options]
+markers = ["network: tests that read from the public HRRR bucket (skipped unless PTYPE_NETWORK_TESTS=1)"]

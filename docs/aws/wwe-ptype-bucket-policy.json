@@ -1,0 +1,21 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowGetObjectFromWebsiteReferer",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::wwe-ptype/*",
+      "Condition": {
+        "StringLike": {
+          "aws:Referer": [
+            "https://ai2es.github.io/*",
+            "http://localhost:*/*",
+            "http://127.0.0.1:*/*"
+          ]
+        }
+      }
+    }
+  ]
+}

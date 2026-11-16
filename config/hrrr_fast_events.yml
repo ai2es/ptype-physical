@@ -1,0 +1,74 @@
+# Event windows for the fast HRRR inference run list.
+#
+# Each event gives the first and last valid days (UTC) of the storm. The run list
+# starts `lead_days` before `event_start` so that every forecast hour that verifies
+# inside the event has been initialized, and it runs hourly inits through the end of
+# `event_end`. Overlapping or back-to-back windows are merged when the runs are built.
+lead_days: 2
+init_interval_hours: 1
+
+events:
+  - name: "December 2023 reference case"
+    event_start: 2023-12-23
+    event_end: 2023-12-27
+    source: "Reference case"
+  - name: "Early November lake-effect snow"
+    event_start: 2025-11-09
+    event_end: 2025-11-11
+    source: "Wikipedia, 2025-26 North American winter"
+  - name: "US Thanksgiving Week blizzard"
+    event_start: 2025-11-24
+    event_end: 2025-11-27
+    source: "Wikipedia, 2025-26 North American winter"
+  - name: "Late November storm (first)"
+    event_start: 2025-11-28
+    event_end: 2025-11-30
+    source: "Wikipedia, 2025-26 North American winter"
+  - name: "Early December storm (second)"
+    event_start: 2025-12-01
+    event_end: 2025-12-03
+    source: "Wikipedia, 2025-26 North American winter"
+  - name: "Mid-December storm (first)"
+    event_start: 2025-12-12
+    event_end: 2025-12-15
+    source: "Wikipedia, 2025-26 North American winter"
+  - name: "Mid-December storm (second)"
+    event_start: 2025-12-17
+    event_end: 2025-12-20
+    source: "Wikipedia, 2025-26 North American winter"
+  - name: "Post-Christmas Northern U.S. bomb cyclone"
+    event_start: 2025-12-28
+    event_end: 2025-12-30
+    source: "Wikipedia, 2025-26 North American winter"
+  - name: "Late January winter storm"
+    event_start: 2026-01-23
+    event_end: 2026-01-27
+    source: "Wikipedia, 2025-26 North American winter"
+  - name: "Pre-Groundhog Day nor'easter"
+    event_start: 2026-01-31
+    event_end: 2026-02-02
+    source: "Wikipedia, 2025-26 North American winter"
+  - name: "February West Coast atmospheric rivers"
+    event_start: 2026-02-15
+    event_end: 2026-02-20
+    source: "Wikipedia, 2025-26 North American winter"
+  - name: "Late February blizzard"
+    event_start: 2026-02-20
+    event_end: 2026-02-24
+    source: "Wikipedia, 2025-26 North American winter"
+  - name: "Early March storm (second)"
+    event_start: 2026-03-10
+    event_end: 2026-03-14
+    source: "Wikipedia, 2025-26 North American winter"
+  - name: "Mid-March blizzard and cold snap"
+    event_start: 2026-03-13
+    event_end: 2026-03-17
+    source: "Wikipedia, 2025-26 North American winter"
+  - name: "Early April storm complexes"
+    event_start: 2026-04-01
+    event_end: 2026-04-05
+    source: "Wikipedia, 2025-26 North American winter"
+  - name: "Early May winter storm"
+    event_start: 2026-05-05
+    event_end: 2026-05-06
+    source: "Wikipedia, 2025-26 North American winter"
