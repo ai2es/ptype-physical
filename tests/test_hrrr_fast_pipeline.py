@@ -8,6 +8,7 @@ real: soundings, engine, revised Bourgouin, rotation, both Zarr stores, markers,
 
 from __future__ import annotations
 
+import itertools
 import json
 import subprocess
 import sys
@@ -743,3 +744,157 @@ def test_real_finalize_produces_readable_store(weights, tmp_path):
     assert g.attrs["hrrr_ptype"].get("layout") == "finalized"
     assert np.all(np.isfinite(g["0/ML_rain"][2])) and np.all(np.isnan(g["0/ML_rain"][1]))
     assert not list((tmp_path / "bucket" / Path(pk).parent).glob("*.staging")) and not list((tmp_path / "bucket" / Path(pk).parent).glob("*finalize-tmp"))
+
+
+# ---------------------------------------------------------------------------------------------
+# Output-bucket credentials (boto3 profile -> obstore credential provider); no network
+# ---------------------------------------------------------------------------------------------
+FAKE_KEY, FAKE_SECRET, FAKE_TOKEN = "AKIAFAKEKEYFORTESTS", "fakeSecretValue/ShouldNeverBeLogged", "fakeSessionTokenNeverLogged"
+
+
+@pytest.fixture
+def aws_files(tmp_path, monkeypatch):
+    """A private ~/.aws with one profile holding temporary keys (like Derecho), and no other credential sources."""
+    creds = tmp_path / "credentials"
+    creds.write_text(f"[testprof]\naws_access_key_id = {FAKE_KEY}\naws_secret_access_key = {FAKE_SECRET}\naws_session_token = {FAKE_TOKEN}\n")
+    conf = tmp_path / "config"
+    conf.write_text("")
+    for k in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_PROFILE", "AWS_DEFAULT_PROFILE"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("AWS_SHARED_CREDENTIALS_FILE", str(creds))
+    monkeypatch.setenv("AWS_CONFIG_FILE", str(conf))
+    monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
+    return tmp_path
+
+
+def _no_secret_in_logs(caplog):
+    text = " ".join(json.dumps(r.__dict__, default=str) for r in caplog.records)
+    assert FAKE_SECRET not in text and FAKE_TOKEN not in text and FAKE_KEY not in text
+
+
+def test_profile_credentials_reach_the_output_store(aws_files):
+    pytest.importorskip("boto3")
+    session = pipeline.resolve_aws_session("testprof", "us-east-1", verify=False)
+    store = pipeline.output_s3_store("wwe-ptype", "us-east-1", session)
+    assert store.config == {"bucket": "wwe-ptype", "region": "us-east-1"}  # no skip_signature: requests are signed
+    cred = store.credential_provider()
+    assert (cred["access_key_id"], cred["secret_access_key"], cred["token"]) == (FAKE_KEY, FAKE_SECRET, FAKE_TOKEN)
+    quick = pipeline.output_s3_store("wwe-ptype", "us-east-1", session, quick=True)
+    assert quick.client_options == pipeline.QUICK_CLIENT_OPTIONS and quick.retry_config["max_retries"] == 1
+    assert FAKE_SECRET not in repr(store)
+    # The HRRR input store stays anonymous and never gets credentials.
+    src = pipeline.GribSource(PipelineConfig(source="s3"))
+    assert src.store.config.get("skip_signature") == "true" and src.store.credential_provider is None
+
+
+def test_missing_profile_and_rejected_keys(aws_files, caplog):
+    boto3 = pytest.importorskip("boto3")
+    from botocore.exceptions import ClientError
+
+    with pytest.raises(pipeline.CredentialsError, match="'nope' not found"):
+        pipeline.resolve_aws_session("nope", "us-east-1", verify=False)
+
+    class FakeSTS:
+        def get_caller_identity(self):
+            raise ClientError({"Error": {"Code": "ExpiredToken", "Message": "The security token included in the request is expired"}}, "GetCallerIdentity")
+
+    class ExpiredSession(boto3.Session):
+        def client(self, *a, **kw):
+            return FakeSTS()
+
+    caplog.set_level("DEBUG")
+    with pytest.raises(pipeline.CredentialsError, match="rejected \\(ExpiredToken\\)") as exc:
+        pipeline.resolve_aws_session("testprof", "us-east-1", verify=True, session_factory=ExpiredSession)
+    assert FAKE_SECRET not in str(exc.value) and exc.value.__cause__ is None and exc.value.__suppress_context__
+
+    class OkSTS:
+        def get_caller_identity(self):
+            return {"Arn": "arn:aws:iam::123456789012:user/test", "Account": "123456789012"}
+
+    class OkSession(boto3.Session):
+        def client(self, *a, **kw):
+            return OkSTS()
+
+    pipeline.resolve_aws_session("testprof", "us-east-1", verify=True, session_factory=OkSession)
+    assert any(getattr(r, "aws_arn", None) == "arn:aws:iam::123456789012:user/test" for r in caplog.records)
+    _no_secret_in_logs(caplog)
+
+
+def test_upload_fails_fast_on_bad_credentials_and_no_upload_only_warns(aws_files, weights, tmp_path, monkeypatch, caplog):
+    pytest.importorskip("boto3")
+    import time as _time
+
+    cfg = make_cfg(tmp_path, weights, upload="s3")
+    src = pipeline.SyntheticSource()
+    monkeypatch.setenv("AWS_PROFILE", "missingprofile")
+    with pytest.raises(pipeline.CredentialsError):
+        pipeline.run_pipeline(cfg, pipeline.make_runs([INIT], [0]), source=src)
+    assert src.reads == {}  # failed before any input was read
+    caplog.set_level("WARNING")
+    t0 = _time.perf_counter()
+    res = pipeline.run_pipeline(cfg, pipeline.make_runs([INIT], [0]), source=src, no_upload=True)
+    assert _time.perf_counter() - t0 < 60 and res[0]["status"] == "complete"
+    assert any("not skipping indexed runs" in r.getMessage() for r in caplog.records)
+    _no_secret_in_logs(caplog)
+
+
+def test_unreadable_index_is_fatal_only_when_uploading(caplog):
+    class Broken:
+        def read(self):
+            raise PermissionError("403 Forbidden")
+
+    caplog.set_level("WARNING")
+    assert pipeline._indexed_inits(Broken(), strict=False) == set()
+    assert any("could not read the index" in r.getMessage() for r in caplog.records)
+    with pytest.raises(PermissionError):
+        pipeline._indexed_inits(Broken(), strict=True)
+
+
+# ---------------------------------------------------------------------------------------------
+# Node-wide download cap (max_concurrent_fetches)
+# ---------------------------------------------------------------------------------------------
+def test_fetch_slot_limits_concurrency_across_threads():
+    import multiprocessing as mp
+
+    pipeline.set_fetch_slots(mp.get_context("spawn").Semaphore(2))
+    active, peak, lock = [0], [0], threading.Lock()
+
+    def job():
+        st = pipeline.ReadStats()
+        with pipeline.fetch_slot(st):
+            with lock:
+                active[0] += 1
+                peak[0] = max(peak[0], active[0])
+            import time as _t
+
+            _t.sleep(0.05)
+            with lock:
+                active[0] -= 1
+        assert st.fetch_start_unix is not None and st.fetch_end_unix >= st.fetch_start_unix
+
+    try:
+        ts = [threading.Thread(target=job) for _ in range(8)]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join()
+    finally:
+        pipeline.set_fetch_slots(None)
+    assert peak[0] == 2
+
+
+def test_max_concurrent_fetches_across_worker_processes(weights, tmp_path):
+    """Three spawned workers, one download slot: the (simulated, 0.3 s) downloads never overlap in time."""
+    cfg = make_cfg(tmp_path, weights, source="synthetic:sleep=0.3", processes=3, threads_per_process=1, max_concurrent_fetches=1)
+    res = pipeline.run_pipeline(cfg, pipeline.make_runs([INIT], [0, 1, 2, 3, 4, 5]), no_upload=True)
+    hours = res[0]["hours"].values()
+    assert len({h["worker"] for h in hours}) >= 2
+    spans = sorted((h["bytes"]["fetch_start_unix"], h["bytes"]["fetch_end_unix"]) for h in hours)
+    assert all(b0 >= a1 - 1e-3 for (_, a1), (b0, _) in itertools.pairwise(spans))
+    assert sum(h["bytes"]["fetch_wait_s"] for h in hours) > 0.2  # somebody had to wait for the slot
+
+
+def test_config_rejects_bad_fetch_cap():
+    with pytest.raises(ValueError):
+        PipelineConfig(max_concurrent_fetches=0)
+    assert PipelineConfig().max_concurrent_fetches is None and PipelineConfig().memory_per_process_gb == 6.0

@@ -83,7 +83,7 @@ from collections.abc import Callable, Iterable, Sequence
 from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, ThreadPoolExecutor, wait
 from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -359,27 +359,79 @@ def call_with_retries(
 
 @dataclass
 class ReadStats:
-    """Cost of one read call: seconds and bytes (payload = message bytes; requested = after coalescing)."""
+    """Cost of one read call: seconds and bytes (payload = message bytes; requested = after coalescing).
+
+    ``fetch_wait_s`` is the time spent waiting for a download slot (``max_concurrent_fetches``), already
+    included in ``fetch_s``; ``fetch_start_unix``/``fetch_end_unix`` bracket the byte-range downloads in wall-clock
+    time so a network study can see how downloads of different workers overlapped.
+    """
 
     fetch_s: float = 0.0
     decode_s: float = 0.0
+    fetch_wait_s: float = 0.0
     n_messages: int = 0
     n_requests: int = 0
     payload_bytes: int = 0
     requested_bytes: int = 0
+    fetch_start_unix: float | None = None
+    fetch_end_unix: float | None = None
 
     def add(self, other: ReadStats) -> None:
-        """Accumulate another read (used when extra levels are fetched)."""
+        """Accumulate another read (used when extra levels are fetched): sums, and the outer time bracket."""
         for f in dataclasses.fields(self):
-            setattr(self, f.name, getattr(self, f.name) + getattr(other, f.name))
+            a, b = getattr(self, f.name), getattr(other, f.name)
+            if f.name == "fetch_start_unix":
+                setattr(self, f.name, min(v for v in (a, b) if v is not None) if (a, b) != (None, None) else None)
+            elif f.name == "fetch_end_unix":
+                setattr(self, f.name, max(v for v in (a, b) if v is not None) if (a, b) != (None, None) else None)
+            else:
+                setattr(self, f.name, a + b)
 
 
-def _level_messages(entries, fxx: int, variables: Sequence[str], lo: int, hi: int) -> list[reader.PlannedMessage]:
-    """Planned messages of ``variables`` on hybrid levels ``lo+1 .. hi`` (0-based indices ``lo..hi-1``)."""
-    if hi <= lo:
-        return []
-    plan = reader.select_messages(entries, n_levels=hi, fxx=fxx, hybrid_variables=variables, surface_fields={}, include_apcp=False)
-    return [m for m in plan.messages if m.level_index >= lo]
+# ---------------------------------------------------------------------------------------------
+# Download slots (max_concurrent_fetches)
+# ---------------------------------------------------------------------------------------------
+#: Cross-process semaphore limiting simultaneous byte-range downloads on this node, or None (no cap). Set in
+#: each worker by the pool initializer (and in the parent for ``processes: 0``).
+_FETCH_SLOTS = None
+
+
+def set_fetch_slots(semaphore) -> None:
+    """Install (or with ``None`` remove) the node-wide download semaphore for this process."""
+    global _FETCH_SLOTS
+    _FETCH_SLOTS = semaphore
+
+
+@contextlib.contextmanager
+def fetch_slot(stats: ReadStats | None = None):
+    """Hold one download slot while the body runs; record the wait and the download's wall-clock bracket.
+
+    Why a cap independent of the number of workers: on Derecho 15 workers downloading at once made the median
+    fetch 55.5 s per hour against 2.4 s for one worker alone, i.e. the node link (or the per-connection S3
+    throughput) is shared, not multiplied. Compute stages do not have that limit, so the cap lets e.g. 15
+    workers compute while only a few download, without changing the process layout. The slot is acquired per
+    attempt (inside the retry loop), so a worker sleeping in a retry back-off does not block the others.
+    """
+    t0 = time.perf_counter()
+    sem = _FETCH_SLOTS
+    if sem is not None:
+        sem.acquire()
+    try:
+        if stats is not None:
+            stats.fetch_wait_s += time.perf_counter() - t0
+            now = time.time()
+            stats.fetch_start_unix = now if stats.fetch_start_unix is None else min(stats.fetch_start_unix, now)
+        yield
+    finally:
+        if stats is not None:
+            stats.fetch_end_unix = time.time()
+        if sem is not None:
+            sem.release()
+
+
+def level_spec(wind: tuple[int, int], thermo: tuple[int, int]) -> dict[str, tuple[int, int]]:
+    """Per-variable 0-based level ranges for ``reader.select_messages(n_levels=...)``; empty ranges are dropped."""
+    return {v: wind for v in WIND_VARIABLES} | {v: thermo for v in THERMO_VARIABLES}
 
 
 class GribHour:
@@ -397,12 +449,13 @@ class GribHour:
         self.cfg = cfg
 
     def plan(self, wind: tuple[int, int], thermo: tuple[int, int], surface: bool) -> reader.ReadPlan:
-        """The read plan for wind levels ``wind = (lo, hi)``, thermo levels ``thermo`` and (optionally) surface fields."""
-        msgs = _level_messages(self.entries, self.fxx, WIND_VARIABLES, *wind) + _level_messages(self.entries, self.fxx, THERMO_VARIABLES, *thermo)
-        if surface:
-            msgs += reader.select_messages(self.entries, n_levels=1, fxx=self.fxx, hybrid_variables=(), include_apcp=False).messages
-        msgs.sort(key=lambda m: m.entry.offset)
-        return reader.ReadPlan(messages=msgs, n_levels=max(wind[1], thermo[1]), fxx=self.fxx)
+        """The read plan for wind levels ``wind = (lo, hi)``, thermo levels ``thermo`` and (optionally) surface fields.
+
+        ``reader.select_messages`` with a per-variable mapping gives each variable its own level range (the
+        winds are only needed to 5 km, T/q/p/z up to the Bourgouin top), raises if any planned level is
+        absent from the idx, and records the ranges in the plan so ``reader.decode`` sizes each cube itself.
+        """
+        return reader.select_messages(self.entries, n_levels=level_spec(wind, thermo), fxx=self.fxx, surface_fields=None if surface else {}, include_apcp=False)
 
     def planned_bytes(self, wind: tuple[int, int], thermo: tuple[int, int], surface: bool = True) -> tuple[int, int, int]:
         """``(payload bytes, requested bytes after coalescing, requests)`` without fetching (dry run)."""
@@ -414,16 +467,21 @@ class GribHour:
     def read(self, wind: tuple[int, int], thermo: tuple[int, int], surface: bool, threads: int, log_extra: dict | None = None):
         """Fetch and decode the planned messages; returns ``(fields, grid, stats)``.
 
-        Hybrid variables come back as ``(hi - lo, ny, nx)`` cubes for the requested level range only;
-        the caller concatenates top-ups. Decoding writes each message straight into a preallocated cube from
-        the ecCodes threads (different slices, so no lock is needed) instead of stacking afterwards, which
-        would briefly double the memory of every cube.
+        Hybrid variables come back as ``(hi - lo, ny, nx)`` cubes for the requested level range only (the
+        caller concatenates top-ups). ``reader.decode`` writes each message from the ecCodes threads straight
+        into its slot of a cube it allocated for that variable's own range, and checks first that every
+        planned level slot is filled exactly once.
         """
         plan = self.plan(wind, thermo, surface)
         stats = ReadStats(n_messages=len(plan.messages), payload_bytes=plan.total_bytes())
+
+        def fetch():
+            with fetch_slot(stats):
+                return reader.fetch_ranges(self.store, self.key, plan, coalesce=self.cfg.coalesce)
+
         t0 = time.perf_counter()
         bufs = call_with_retries(
-            lambda: reader.fetch_ranges(self.store, self.key, plan, coalesce=self.cfg.coalesce),
+            fetch,
             retries=self.cfg.fetch_retries,
             backoff_s=self.cfg.fetch_backoff_s,
             max_backoff_s=self.cfg.fetch_max_backoff_s,
@@ -436,31 +494,8 @@ class GribHour:
         stats.n_requests = len(merged)
         stats.requested_bytes = sum(e - s for s, e in merged)
         t0 = time.perf_counter()
-        first = reader.decode_message(bufs[0])
         grid = reader.grid_metadata(bufs[0])
-        ny, nx = first.shape
-        ranges = {v: wind for v in WIND_VARIABLES} | {v: thermo for v in THERMO_VARIABLES}
-        out: dict[str, np.ndarray] = {}
-        for pm in plan.messages:
-            if pm.level_index is not None and pm.name not in out:
-                lo, hi = ranges[pm.name]
-                out[pm.name] = np.empty((hi - lo, ny, nx), dtype=np.float32)
-
-        def put(pm: reader.PlannedMessage, arr: np.ndarray) -> None:
-            if pm.level_index is None:
-                out[pm.name] = arr
-            else:
-                out[pm.name][pm.level_index - ranges[pm.name][0]] = arr
-
-        put(plan.messages[0], first)
-        rest = list(zip(plan.messages[1:], bufs[1:], strict=True))
-        if threads > 1 and rest:
-            with ThreadPoolExecutor(max_workers=threads) as ex:
-                for pm, arr in zip((p for p, _ in rest), ex.map(lambda pb: reader.decode_message(pb[1]), rest), strict=True):
-                    put(pm, arr)
-        else:
-            for pm, b in rest:
-                put(pm, reader.decode_message(b))
+        out = reader.decode(plan, bufs, decoder="eccodes", workers=threads, pool="thread")
         del bufs
         stats.decode_s = time.perf_counter() - t0
         return out, grid, stats
@@ -556,6 +591,12 @@ class SyntheticHour:
         src.reads[key] = src.reads.get(key, 0) + 1
         if src.fail_first and src.reads[key] <= src.fail_first:
             raise ConnectionError(f"synthetic transient failure {src.reads[key]}")
+        stats = ReadStats(n_requests=1)
+        t0 = time.perf_counter()
+        with fetch_slot(stats):  # same download-slot discipline as the GRIB source
+            if src.fetch_sleep_s:
+                time.sleep(src.fetch_sleep_s)
+        stats.fetch_s = time.perf_counter() - t0
         g = src.grid_meta
         ny, nx = g.ny, g.nx
         rng = np.random.default_rng(int(self.init.timestamp()) // 3600 * 100 + self.fxx)
@@ -597,19 +638,22 @@ class SyntheticHour:
                 out[k] = f.astype(np.float32)
             out["PRATE"] = rng.gamma(0.5, 1e-4, size=(ny, nx)).astype(np.float32)
         n = sum(1 for v in out.values() for _ in range(v.shape[0] if v.ndim == 3 else 1))
-        return out, g, ReadStats(n_messages=n, payload_bytes=n * 1000, requested_bytes=n * 1000, n_requests=1)
+        stats.n_messages, stats.payload_bytes, stats.requested_bytes = n, n * 1000, n * 1000
+        return out, g, stats
 
 
 class SyntheticSource:
     """Fake HRRR source with the same interface as :class:`GribSource`.
 
-    ``source: "synthetic"`` in the config, optionally with options ``"synthetic:missing=3,5;fail=1"``:
-    ``missing`` hours raise :class:`MissingInputError`, and every hour's first ``fail`` reads raise a
-    transient ``ConnectionError`` (to exercise the retry path).
+    ``source: "synthetic"`` in the config, optionally with options ``"synthetic:missing=3,5;fail=1;sleep=0.2"``:
+    ``missing`` hours raise :class:`MissingInputError`, every hour's first ``fail`` reads raise a transient
+    ``ConnectionError`` (to exercise the retry path), and ``sleep`` simulates a download of that many seconds
+    inside a download slot (to exercise ``max_concurrent_fetches``).
     """
 
-    def __init__(self, missing: Iterable[int] = (), fail_first: int = 0, ny: int = 24, nx: int = 32, cfg: PipelineConfig | None = None):
+    def __init__(self, missing: Iterable[int] = (), fail_first: int = 0, ny: int = 24, nx: int = 32, fetch_sleep_s: float = 0.0, cfg: PipelineConfig | None = None):
         self.missing = set(missing)
+        self.fetch_sleep_s = float(fetch_sleep_s)
         self.fail_first = int(fail_first)
         self.grid_meta = synthetic_grid(ny, nx)
         self.reads: dict[tuple[str, int], int] = {}
@@ -617,7 +661,7 @@ class SyntheticSource:
 
     @classmethod
     def from_spec(cls, spec: str, cfg: PipelineConfig | None = None) -> SyntheticSource:
-        """Parse ``synthetic[:missing=3,5;fail=1;ny=24;nx=32]``."""
+        """Parse ``synthetic[:missing=3,5;fail=1;ny=24;nx=32;sleep=0.2]``."""
         kwargs: dict[str, Any] = {}
         _, _, opts = spec.partition(":")
         for item in filter(None, opts.split(";")):
@@ -628,6 +672,8 @@ class SyntheticSource:
                 kwargs["fail_first"] = int(v)
             elif k in ("ny", "nx"):
                 kwargs[k] = int(v)
+            elif k == "sleep":
+                kwargs["fetch_sleep_s"] = float(v)
             else:
                 raise ValueError(f"unknown synthetic option {k!r}")
         return cls(cfg=cfg, **kwargs)
@@ -1054,9 +1100,10 @@ def process_hour(ctx: WorkerContext, task: HourTask) -> dict[str, Any]:
 _WORKER: WorkerContext | None = None
 
 
-def _init_worker(cfg_dict: dict[str, Any], counter, n_gpus: int) -> None:
-    """Pool initializer: pick this worker's GPU, configure logging, load the model once."""
+def _init_worker(cfg_dict: dict[str, Any], counter, n_gpus: int, fetch_slots=None) -> None:
+    """Pool initializer: pick this worker's GPU, install the node-wide download semaphore, load the model once."""
     global _WORKER
+    set_fetch_slots(fetch_slots)
     with counter.get_lock():
         idx = counter.value
         counter.value += 1
@@ -1217,27 +1264,116 @@ class ObstoreIndex:
         return index.update_index(self.store, self.key, entry)
 
 
-def s3_store_with_profile(bucket: str, region: str):
-    """obstore S3 store using ``$AWS_PROFILE`` through boto3 (obstore itself does not read AWS profiles)."""
+class CredentialsError(RuntimeError):
+    """AWS credentials for the output bucket are missing, unreadable or rejected (message never contains secrets)."""
+
+
+#: Timeouts/retries for the quick index probe (``--no-upload``, launcher): a failure must cost seconds, not the
+#: ~15 s of obstore's default 10 retries. The upload path keeps obstore's default retries for the real writes.
+QUICK_CLIENT_OPTIONS = {"connect_timeout": "3s", "timeout": "10s"}
+QUICK_RETRY_CONFIG = {
+    "max_retries": 1,
+    "retry_timeout": timedelta(seconds=10),
+    "backoff": {"init_backoff": timedelta(milliseconds=200), "max_backoff": timedelta(seconds=1), "base": 2},
+}
+
+
+def resolve_aws_session(profile: str | None, region: str, *, verify: bool, timeout_s: float = 10.0, session_factory: Callable[..., Any] | None = None):
+    """Resolve credentials for the OUTPUT bucket once, in the parent, from an AWS profile; optionally verify them.
+
+    Why: obstore's ``S3Store`` does not read ``~/.aws/credentials`` or profiles. Without an explicit credential
+    provider it falls back to the EC2 instance-metadata service (``169.254.169.254``), which does not exist on
+    Derecho and costs ~15 s of retries before failing. On Derecho the keys are temporary (with a session token)
+    and live in the shared credentials file under ``$AWS_PROFILE``; boto3 reads that file (and SSO caches,
+    credential processes ...), so a ``boto3.Session`` is the single source of credentials.
+
+    With ``verify`` (upload enabled) one STS ``GetCallerIdentity`` call with short timeouts and no retries checks
+    that the keys are accepted, so a job with expired keys fails at start-up instead of after hours of compute.
+    Only the caller ARN is logged; access keys, secrets and tokens are never put in messages or log records.
+
+    Args:
+        profile: Profile name (``$AWS_PROFILE``); ``None`` uses boto3's default chain.
+        region: Bucket region.
+        verify: Make the STS call.
+        timeout_s: Connect/read timeout of that call.
+        session_factory: For tests; defaults to ``boto3.Session``.
+
+    Returns:
+        The ``boto3.Session``.
+
+    Raises:
+        CredentialsError: Profile missing, no credentials, or credentials rejected/unverifiable.
+    """
+    import boto3
+    import botocore.exceptions as bexc
+    from botocore.config import Config
+
+    factory = session_factory or boto3.Session
+    where = f"profile {profile!r}" if profile else "the default AWS credential chain (AWS_PROFILE not set)"
+    try:
+        session = factory(profile_name=profile, region_name=region) if profile else factory(region_name=region)
+        creds = session.get_credentials()
+    except bexc.ProfileNotFound:
+        raise CredentialsError(f"AWS {where} not found in ~/.aws/config or ~/.aws/credentials") from None
+    except bexc.BotoCoreError as err:
+        raise CredentialsError(f"could not load AWS credentials from {where}: {type(err).__name__}") from None
+    if creds is None:
+        raise CredentialsError(f"no AWS credentials in {where}")
+    if verify:
+        cfg = Config(connect_timeout=timeout_s, read_timeout=timeout_s, retries={"max_attempts": 1, "mode": "standard"})
+        try:
+            ident = session.client("sts", region_name=region, config=cfg).get_caller_identity()
+        except bexc.ClientError as err:
+            code = err.response.get("Error", {}).get("Code", "unknown")
+            raise CredentialsError(f"AWS credentials from {where} were rejected ({code}); refresh them (docs/aws_upload.md)") from None
+        except bexc.BotoCoreError as err:
+            raise CredentialsError(f"could not verify AWS credentials from {where}: {type(err).__name__}") from None
+        logger.info("AWS credentials verified", extra={"aws_profile": profile, "aws_arn": ident.get("Arn")})
+    return session
+
+
+def output_s3_store(bucket: str, region: str, session, *, quick: bool = False):
+    """obstore ``S3Store`` for the output bucket with credentials from ``session`` (see :func:`resolve_aws_session`).
+
+    The credential provider is ``obstore.auth.boto3.Boto3CredentialProvider`` over the already-resolved
+    session, exactly what ``index.main`` builds from ``--profile``; ``index.s3_store`` is used if that module
+    provides it (proposed refactor) so there is one construction for both. ``quick`` sets short timeouts and a
+    single retry for probes. The HRRR input store is a different, anonymous store (``reader.open_store``,
+    ``skip_signature=True``) and never gets these credentials.
+    """
+    from obstore.auth.boto3 import Boto3CredentialProvider
     from obstore.store import S3Store
 
-    kwargs: dict[str, Any] = {"region": region}
-    profile = os.environ.get("AWS_PROFILE")
-    if profile:
-        import boto3
-        from obstore.auth.boto3 import Boto3CredentialProvider
+    opts: dict[str, Any] = {"credential_provider": Boto3CredentialProvider(session)}
+    if quick:
+        opts |= {"client_options": QUICK_CLIENT_OPTIONS, "retry_config": QUICK_RETRY_CONFIG}
+    make = getattr(index, "s3_store", None)
+    if make is not None:
+        return make(bucket, region, session=session, **{k: v for k, v in opts.items() if k != "credential_provider"})
+    return S3Store(bucket, region=region, **opts)
 
-        kwargs["credential_provider"] = Boto3CredentialProvider(boto3.Session(profile_name=profile))
-    return S3Store(bucket, **kwargs)
 
+def make_backends(cfg: PipelineConfig, no_upload: bool = False):
+    """``(uploader, index)`` for the configured upload mode; both ``None`` for ``upload: none``.
 
-def make_backends(cfg: PipelineConfig):
-    """``(uploader, index)`` for the configured upload mode; both ``None`` for ``upload: none``."""
+    For ``upload: s3`` the credentials are resolved here, once. With uploads enabled a missing profile or
+    rejected keys raise :class:`CredentialsError` immediately. With ``no_upload`` the index is only read to skip
+    finished runs, so a credentials problem is a quick warning and no index is used.
+    """
     if cfg.upload == "none":
         return None, None
     if cfg.upload == "local":
-        return LocalUploader(cfg.upload_root), LocalIndex(Path(cfg.upload_root) / index.INDEX_KEY)
-    return AwsCliUploader(cfg.bucket, cfg.region, cfg.aws_cli, cfg.storage_class), ObstoreIndex(s3_store_with_profile(cfg.bucket, cfg.region))
+        return (None if no_upload else LocalUploader(cfg.upload_root)), LocalIndex(Path(cfg.upload_root) / index.INDEX_KEY)
+    profile = os.environ.get("AWS_PROFILE")
+    if no_upload:
+        try:
+            session = resolve_aws_session(profile, cfg.region, verify=False)
+        except CredentialsError as err:
+            logger.warning("index not readable without AWS credentials; not skipping indexed runs", extra={"error": str(err)})
+            return None, None
+        return None, ObstoreIndex(output_s3_store(cfg.bucket, cfg.region, session, quick=True))
+    session = resolve_aws_session(profile, cfg.region, verify=True)
+    return AwsCliUploader(cfg.bucket, cfg.region, cfg.aws_cli, cfg.storage_class), ObstoreIndex(output_s3_store(cfg.bucket, cfg.region, session))
 
 
 # =============================================================================================
@@ -1511,14 +1647,21 @@ def finalize_run(st: RunState, cfg: PipelineConfig, uploader, index_backend, no_
 # =============================================================================================
 # Orchestration
 # =============================================================================================
-def _indexed_inits(index_backend) -> set[str]:
-    """Init strings (``2024-04-30T00:00Z``) already in the index; empty if the index cannot be read."""
+def _indexed_inits(index_backend, strict: bool = False) -> set[str]:
+    """Init strings (``2024-04-30T00:00Z``) already in the index.
+
+    A missing index object is an empty index (handled by the backend). Any other read failure is fatal with
+    ``strict`` (uploads enabled: the run would only fail later when writing the index) and a warning otherwise.
+    Only the exception type and message are logged; obstore/botocore messages carry no credentials.
+    """
     if index_backend is None:
         return set()
     try:
         return {e["init"] for e in index_backend.read().get("inits", [])}
-    except Exception as err:  # noqa: BLE001 - an unreadable index must not stop processing
-        logger.warning("could not read the index; not skipping any run", extra={"error": repr(err)})
+    except Exception as err:
+        if strict:
+            raise
+        logger.warning("could not read the index; not skipping any run", extra={"error": f"{type(err).__name__}: {str(err)[:300]}"})
         return set()
 
 
@@ -1550,12 +1693,13 @@ def run_pipeline(
         The final manifest of every run.
     """
     if uploader is None and index_backend is None:
-        uploader, index_backend = make_backends(cfg)
+        uploader, index_backend = make_backends(cfg, no_upload)
     if no_upload:
         uploader = None
     if uploader is not None:
         uploader.preflight()
-    indexed = set() if ignore_index else _indexed_inits(index_backend)
+    # With uploads the index must be readable (we will write it); without, an unreadable index is a warning.
+    indexed = set() if ignore_index else _indexed_inits(index_backend, strict=uploader is not None)
     todo = []
     results = []
     for r in runs:
@@ -1573,17 +1717,20 @@ def run_pipeline(
     logger.info(
         "starting", extra={"runs": len(todo), "hours": n_tasks, "processes": processes, "threads_per_process": cfg.threads_per_process, "engine": cfg.engine, "device": cfg.device}
     )
+    import multiprocessing as mp
+
+    ctx = mp.get_context("spawn")
+    # One semaphore for the whole node, shared by every worker (inherited at spawn through initargs).
+    fetch_slots = ctx.Semaphore(cfg.max_concurrent_fetches) if cfg.max_concurrent_fetches else None
     if processes <= 0:
+        set_fetch_slots(fetch_slots)
         executor = InlineExecutor(WorkerContext(cfg, 0, source=parent_source, engine=engine))
     else:
-        import multiprocessing as mp
-
         os.environ.update(thread_env(cfg.threads_per_process))
-        ctx = mp.get_context("spawn")
         n_gpus = (cfg.gpus if cfg.gpus is not None else detect_gpus()) if cfg.device.startswith("cuda") else 0
         if cfg.device.startswith("cuda") and n_gpus == 0:
             raise RuntimeError("device cuda requested but no GPU is visible")
-        executor = ProcessPoolExecutor(max_workers=processes, mp_context=ctx, initializer=_init_worker, initargs=(cfg.to_dict(), ctx.Value("i", 0), n_gpus))
+        executor = ProcessPoolExecutor(max_workers=processes, mp_context=ctx, initializer=_init_worker, initargs=(cfg.to_dict(), ctx.Value("i", 0), n_gpus, fetch_slots))
     finalizer = ThreadPoolExecutor(max_workers=1, thread_name_prefix="finalize")
     fin_futures: list[Future] = []
     queue = deque(todo)
@@ -1637,6 +1784,7 @@ def run_pipeline(
                     finish(st)
     finally:
         executor.shutdown(wait=True)
+        set_fetch_slots(None)
         finalizer.shutdown(wait=True)
     for f in fin_futures:
         results.append(f.result())

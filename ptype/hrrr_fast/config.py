@@ -45,10 +45,15 @@ class PipelineConfig:
         threads_per_process: Threads each worker may use for numba kernels, BLAS/torch and ecCodes decode.
         decode_threads: ecCodes decode threads per worker; ``None`` means ``threads_per_process``.
         memory_per_process_gb: Peak resident memory of one worker for one forecast hour, used to size
-            ``processes="auto"`` and the PBS launcher. Measured, see ``benchmarks/results/pipeline_local.md``.
+            ``processes="auto"`` and the PBS launcher. Measured on Derecho (15 workers x 8 threads, CPU node): peak
+            3.4-3.7 GB per worker after the writers' range-check fix; 6 GB leaves margin for larger hours.
         memory_fraction: Fraction of the node's available memory the workers may use together.
         max_runs_in_flight: Runs whose hours may be queued at the same time; bounds local disk use while
             keeping workers busy across run boundaries.
+        max_concurrent_fetches: Node-wide cap on simultaneous GRIB byte-range downloads (a semaphore shared by all
+            workers), independent of ``processes``; ``None`` = no cap. On Derecho 15 workers downloading at once
+            made the median fetch 55.5 s per hour vs 2.4 s for one worker alone, so the link is shared; the cap
+            lets the network study's result be applied without changing the process layout.
         gpus: Number of GPUs to spread workers over when ``device == "cuda"``; ``None`` = detect.
         n_levels: Hybrid levels read first for the network (wind) variables. 27 reaches 5000 m AGL with a
             two-level margin over the Rockies in the measured files (level 25 is the first whose minimum
@@ -102,9 +107,10 @@ class PipelineConfig:
     processes: int | str = "auto"
     threads_per_process: int = 8
     decode_threads: int | None = None
-    memory_per_process_gb: float = 12.0
+    memory_per_process_gb: float = 6.0
     memory_fraction: float = 0.8
     max_runs_in_flight: int = 2
+    max_concurrent_fetches: int | None = None
     gpus: int | None = None
     n_levels: int = 27
     bourgouin_top_m: float = 8000.0
@@ -152,6 +158,8 @@ class PipelineConfig:
             raise ValueError("bourgouin_top_m and 5000 must be multiples of bourgouin_dz_m")
         if not (isinstance(self.processes, int) or self.processes == "auto"):
             raise ValueError(f"processes must be an integer or 'auto', not {self.processes!r}")
+        if self.max_concurrent_fetches is not None and self.max_concurrent_fetches < 1:
+            raise ValueError("max_concurrent_fetches must be >= 1 or null (no cap)")
         if self.threads_per_process < 1:
             raise ValueError("threads_per_process must be >= 1")
         if self.sounding_encoding not in ("default", "int16-0.1", "int32-0.01", "lossless"):

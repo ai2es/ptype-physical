@@ -116,14 +116,14 @@ def load_done(index_source: str | None, done_list: str | None, reader: Callable[
 def _read_index(source: str) -> dict:
     """Read an index from ``s3://bucket/key`` (obstore + boto3 profile) or a local path."""
     if source.startswith("s3://"):
-        import obstore
-
         sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-        from ptype.hrrr_fast.pipeline import s3_store_with_profile
+        from ptype.hrrr_fast.pipeline import ObstoreIndex, output_s3_store, resolve_aws_session
 
         bucket, _, key = source[5:].partition("/")
-        store = s3_store_with_profile(bucket, os.environ.get("AWS_REGION", "us-east-1"))
-        return json.loads(bytes(obstore.get(store, key).bytes()))
+        region = os.environ.get("AWS_REGION", "us-east-1")
+        # Explicit profile credentials and short timeouts: a failure falls back to the done-list in seconds.
+        session = resolve_aws_session(os.environ.get("AWS_PROFILE"), region, verify=False)
+        return ObstoreIndex(output_s3_store(bucket, region, session, quick=True), key).read()
     return json.loads(Path(source).read_text())
 
 
@@ -418,7 +418,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--config", default="config/hrrr_fast.yml")
     p.add_argument("--engine", default="torch")
     p.add_argument("--threads", type=int, default=8)
-    p.add_argument("--memory-per-process-gb", type=float, default=12.0, help="measured peak RSS per worker + margin")
+    p.add_argument("--memory-per-process-gb", type=float, default=6.0, help="measured peak RSS per worker + margin")
     p.add_argument("--runs-per-job", type=int, default=None)
     p.add_argument("--seconds-per-forecast-hour-cpu", type=float, default=5.0, help="measured node throughput, CPU node")
     p.add_argument("--seconds-per-forecast-hour-gpu", type=float, default=8.0, help="measured node throughput, GPU node")

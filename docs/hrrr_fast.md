@@ -137,10 +137,22 @@ and nothing is oversubscribed. Workers are **spawned**, not forked: forking a pa
 Why processes × small thread counts instead of one process using all cores: the stages of one hour scale
 sub-linearly (Bourgouin 9.8 → 4.5 s from 4 to 12 threads, writes not at all), but independent hours overlap
 perfectly; on 12 laptop cores 3 × 4 gave 8.8 s of wall time per hour vs 10.9 s for 1 × 12
-(`pipeline_local.md`). Memory is bounded by the process count: one hour per worker, measured peak 9.7 GB per
-worker with the current writers (4.3 GB before the writers' representability check; see the report for the fix),
-hence `memory_per_process_gb: 12`. `processes: auto` = min(cores ÷ threads, 0.8 × available memory ÷ 12 GB)
-→ 15 × 8 on a 235 GB, 128-core CPU node.
+(`pipeline_local.md`). Memory is bounded by the process count: one hour per worker. On Derecho (15 workers × 8
+threads, CPU node) the peak was 3.4–3.7 GB per worker, hence `memory_per_process_gb: 6`.
+`processes: auto` = min(cores ÷ threads, 0.8 × available memory ÷ 6 GB) → up to 16 × 8 on a 235 GB, 128-core CPU node.
+
+**Measured on Derecho** (smoke test, one run, 19 forecast hours; CPU node 15 × 8: 194 s wall; GPU node: 412 s;
+no failures). Per-hour medians on the CPU node: fetch 55.5 s, write 5.3, inference 4.1, Bourgouin 3.3, decode 0.8,
+columns 0.7; worker start-up ~50 s; finalize 11.3 s. **The fetch dominates when many workers download at once**: a
+single worker alone fetched an hour in 2.4 s, so the node's link (or per-connection S3 throughput) is shared, not
+multiplied by the number of workers. `max_concurrent_fetches` (below) exists so the result of the network study
+can be applied without changing the process layout.
+
+**Download cap.** `max_concurrent_fetches: N` puts a node-wide semaphore (created by the parent, shared by all
+spawned workers) around every GRIB byte-range download; `null` (default) means no cap. A worker that has to wait
+records it in `fetch_wait_s` (included in `fetch`), and every hour's manifest entry carries the wall-clock bracket
+of its downloads (`fetch_start_unix`, `fetch_end_unix`), so overlap and queueing can be read off afterwards. The slot
+is taken per attempt, so a worker sleeping in a retry back-off does not hold it. The tiny `.idx` reads are not capped.
 
 Runs are pipelined: hours of up to `max_runs_in_flight` runs are queued together and a finished run is finalized
 and uploaded in a background thread of the parent, so the workers never wait for an upload.
@@ -149,7 +161,7 @@ GPU nodes: each worker process is pinned to one GPU by `CUDA_VISIBLE_DEVICES` (r
 threads on 64 cores = 2 workers per A100) and runs torch there. This was chosen over a single long-lived GPU
 inference server fed through shared memory because inference is < 10 % of an hour's work, the server would add a
 640 MB inter-process copy per hour and a single point of failure, and per-worker GPUs need no IPC at all. A100
-engine throughput is in `engine_local.md` once measured on Derecho; the GPU path was not run locally (no NVIDIA GPU).
+engine throughput on Derecho is in `benchmarks/results/derecho/`; the GPU path ran in the Derecho smoke test (2.8), not locally (no NVIDIA GPU).
 
 ### 2.9 Upload, storage class and the index
 
@@ -164,6 +176,27 @@ Backends: `local` (copy into a directory laid out like the bucket; tests) and `s
 passes per store with explicit content types (`zarr.json` → `application/json`, chunk/shard objects →
 `application/octet-stream`; no Content-Encoding since Zarr already compresses), and an `aws sts
 get-caller-identity` check before any compute so expired keys fail in seconds rather than after an hour.
+
+**Credentials for obstore (index read and conditional write).** obstore's `S3Store` does not read AWS profiles
+or `~/.aws/credentials`; without explicit credentials it falls back to the EC2 instance-metadata endpoint
+(`169.254.169.254`), which does not exist on Derecho: the first Derecho run logged `could not read the index` after
+~13–16 s of retries. The parent now resolves the credentials ONCE from `$AWS_PROFILE` through a `boto3.Session`
+(`pipeline.resolve_aws_session`; boto3 reads the shared credentials file including the session token of the
+temporary keys) and gives every output-bucket store an explicit `Boto3CredentialProvider` over that session
+(`pipeline.output_s3_store`). With uploads enabled it also makes one STS `GetCallerIdentity` call (no retries,
+10 s timeouts), so a missing profile or expired keys fail before any compute (`CredentialsError`); only the
+caller ARN is logged, never keys or tokens. With `--no-upload` the index is only read to skip finished runs: a
+missing profile is a one-line warning (0.11 s on Derecho), and the read uses 3 s/10 s timeouts and one retry.
+The anonymous HRRR input store is a separate store and stays unsigned (`skip_signature`).
+
+Verified against the real bucket from a Derecho login node (2026-11-16, profile `ai2es-testbed-user`):
+GetCallerIdentity 1.96 s including session set-up; GET of the not-yet-existing `ptype/inits.json` with credentials
+returned **404 Not Found** (obstore `FileNotFoundError`, treated as an empty index) in 0.27 s; on the test key
+`ptype/_test/inits_test.json`: `update_index` created it (`If-None-Match: *`) and updated it (`If-Match`); a second
+create returned **412 Precondition Failed** (`AlreadyExistsError`); a put with the stale first ETag returned **412**
+(`PreconditionError`); a put with the current ETag succeeded; 6 threads updating concurrently lost races 15 times
+in total (one of them 5 times), all retried, and all 8 entries were present at the end (1.95 s); the object had no
+`x-amz-storage-class` header (STANDARD) and `Content-Type: application/json`; it was then deleted.
 
 **Storage class.** The Zarr objects are uploaded as **S3 Standard-Infrequent Access** (`storage_class:
 STANDARD_IA`, passed as `--storage-class`): archived cases are read rarely, IA costs about half of S3 Standard
@@ -245,7 +278,6 @@ Commands are in the final report of this work and in `pipeline_local.md`.
 
 ## 5. Known limitations
 
-* Per-worker memory is currently dominated by the writers' representability check (2.8).
-* The GPU path, the `aws s3 sync` backend against the real bucket and conditional index writes on real S3 were
-  not exercised locally.
+* The `aws s3 sync` upload of real stores to the bucket has not been run yet (the index read and conditional
+  writes were verified on real S3, 2.9).
 * Hours cannot be added to a run after it has been finalized (2.10).

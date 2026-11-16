@@ -36,9 +36,10 @@ batch_size: null                # engine default
 processes: auto                 # min(cores // threads_per_process, usable memory // memory_per_process_gb)
 threads_per_process: 8
 decode_threads: null            # = threads_per_process
-memory_per_process_gb: 12.0     # measured peak 9.7 GB per worker (pipeline_local.md) + margin
+memory_per_process_gb: 6.0      # Derecho: peak 3.4-3.7 GB per worker (15 x 8 on a CPU node) + margin
 memory_fraction: 0.8
 max_runs_in_flight: 2
+max_concurrent_fetches: null    # node-wide cap on simultaneous GRIB downloads (null = no cap); see docs/hrrr_fast.md
 
 # --- output --------------------------------------------------------------------------------------
 work_dir: /glade/derecho/scratch/$USER/ptype_fast/runs
