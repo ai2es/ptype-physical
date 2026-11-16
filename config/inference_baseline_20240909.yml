@@ -1,0 +1,70 @@
+model: "hrrr"
+evidential: True
+output_uncertainties: True
+ML_model_path: "/glade/work/dgagne/ptype_fast/model/ptype_model_20240909.keras"
+input_scaler_file: "/glade/work/dgagne/ptype_fast/model/ptype_scaler_20240909.json"
+out_path: "/glade/derecho/scratch/username/ptype_fast/baseline/out/"
+drop_input_data: False
+add_interp_data: True
+n_processors: 1       # Only used if use_dask=False (dask has its own parameters at bottom of config)
+use_dask: False
+save_format: "netcdf"   # Supports "zarr" and "netcdf"
+extent: [-122.8, -60.9, 21.0, 47.9]  # [min_lon, max_lon, min_lat, max_lat]; "full" is NOT supported by get_subset (see baseline.md)
+predict_batch_size: 2048
+dates:
+  most_recent: False
+  start: "2023-12-26 00:00" # ignore if most_recent is True
+  end: "2023-12-26 00:00"   # ignore if most_recent is True
+  frequency: "1H"
+
+forecast_range:
+  start: 12
+  end: 12
+  interval: 1
+
+ml_atm_varaibles: ['t', 'dpt', 'u', 'v']
+
+height_levels:
+  low: 0
+  high: 5000
+  interval: 250
+
+variables:
+  model:
+    rap:
+      isobaricInhPa: ["t", "u", "v", "r", "gh"]
+      surface: ["orog", "crain", "csnow", "cicep", "cfrzr"]
+      heightAboveGround: ["t2m", "d2m", "u10", "v10"]
+      kwargs:
+        product: "awp130pgrb"
+    hrrr:
+      isobaricInhPa: ["t", "u", "v", "dpt", "gh"]
+      surface: ["orog", "sp", "crain", "csnow", "cicep", "cfrzr", "tp"]
+      atmosphere: ["refc"]
+      heightAboveGround: ["t2m", "d2m", "u10", "v10"]
+      kwargs:
+        product: "prs"
+    gfs:
+      isobaricInhPa: [ "t", "u", "v", "q", "gh" ]
+      surface: ["orog", "crain", "csnow", "cicep", "cfrzr"]
+      heightAboveGround: [ "t2m", "d2m", "u10", "v10" ]
+      product: "pgrb2.0p25"
+    nam:
+      isobaricInhPa: [ "t", "u", "v", "dpt", "gh" ]
+      surface: ["orog", "crain", "csnow", "cicep", "cfrzr"]
+      heightAboveGround: [ "t2m", "d2m", "u10", "v10" ]
+      product: "conusnest.hiresf"
+
+dask_params:
+  PBS:
+    resource_spec: "select=1:ncpus=12:mem=128GB"
+    processes: 12
+    project: "NAML0001"
+    n_workers: 1
+    queue: "casper"
+    walltime: "02:00:00"
+    memory: "1TB"
+    interface: "ib0"
+    local_directory: "/glade/work/cbecker/ptype-physical/dask/"
+    log_directory: "/glade/work/cbecker/ptype-physical/dask_logs/"
+  n_jobs: 10
