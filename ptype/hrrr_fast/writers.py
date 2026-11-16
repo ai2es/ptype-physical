@@ -79,6 +79,7 @@ from __future__ import annotations
 import math
 import os
 import shutil
+import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -202,10 +203,17 @@ def check_representable(arr: zarr.Array, data: np.ndarray, name: str = "") -> No
 
     ``cast_value`` is configured with ``out_of_range="clamp"`` (integers never wrap), but a clamp would
     still silently turn, e.g., a pressure given in Pa into 3276.7 hPa. So the writers compute the integer
-    each finite value would become (``rint((x - offset) * scale)``, the codec's nearest-even rounding) and
-    refuse the write if any falls outside the type range minus the NaN sentinel, or if any value is
-    +/-inf. NaN is allowed: it is stored as the sentinel and decodes to NaN. Arrays without
-    ``scale_offset`` + ``cast_value`` are not checked (float storage has no range problem).
+    a value would become (``rint((x - offset) * scale)``, the codec's nearest-even rounding) and refuse the
+    write if it falls outside the type range minus the NaN sentinel, or if any value is +/-inf. NaN is
+    allowed: it is stored as the sentinel and decodes to NaN. Arrays without ``scale_offset`` +
+    ``cast_value`` are not checked (float storage has no range problem).
+
+    Only the two extremes are examined: ``x -> rint((x - offset) * scale)`` is monotonic (non-decreasing
+    for ``scale > 0``, non-increasing for ``scale < 0``), so every value maps inside the integer range iff
+    the NaN-ignoring minimum and maximum do. ``np.nanmin``/``np.nanmax`` reduce the array as given, in its
+    own dtype, without a float64 copy or boolean masks, so the check needs O(1) extra memory (converting a
+    1.9 M x 105 sounding hour to float64 and masking it used to add ~6.6 GB of peak RSS). +/-inf shows up
+    as an infinite extreme; all-NaN and empty inputs pass.
 
     Args:
         arr: Target zarr array.
@@ -218,22 +226,26 @@ def check_representable(arr: zarr.Array, data: np.ndarray, name: str = "") -> No
     q = _quantizer(arr.metadata.to_dict()["codecs"])
     if q is None:
         return
+    x = np.asarray(data)
+    if x.size == 0:
+        return
     scale, offset, dt, sentinel = q
     info = np.iinfo(dt)
     lo, hi = int(info.min), int(info.max)
     lo, hi = (lo + 1, hi) if sentinel == lo else (lo, hi - 1)
-    x = np.asarray(data, dtype=np.float64)
-    if np.isinf(x).any():
-        raise ValueError(f"{name}: {int(np.isinf(x).sum())} infinite values cannot be stored")
-    finite = x[np.isfinite(x)]
-    if finite.size == 0:
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN input: nanmin/nanmax warn and return NaN
+        vmin = float(np.nanmin(x))
+        vmax = float(np.nanmax(x))
+    if math.isnan(vmin):  # all NaN: every value becomes the sentinel
         return
-    qi = np.rint((finite - offset) * scale)
-    bad = (qi < lo) | (qi > hi)
-    if bad.any():
+    if math.isinf(vmin) or math.isinf(vmax):
+        raise ValueError(f"{name}: infinite values cannot be stored (min {vmin:g}, max {vmax:g})")
+    q_ends = (round((vmin - offset) * scale), round((vmax - offset) * scale))  # round() on a float is half-to-even, like rint
+    if min(q_ends) < lo or max(q_ends) > hi:
         raise ValueError(
-            f"{name}: {int(bad.sum())} values outside the representable range [{lo / scale + offset:g}, {hi / scale + offset:g}] "
-            f"of {dt} step {1 / scale:g} (got min {finite.min():g}, max {finite.max():g}); refusing to clamp"
+            f"{name}: values outside the representable range [{lo / scale + offset:g}, {hi / scale + offset:g}] "
+            f"of {dt} step {1 / scale:g} (got min {vmin:g}, max {vmax:g}); refusing to clamp"
         )
 
 

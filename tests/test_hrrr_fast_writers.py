@@ -525,3 +525,27 @@ def test_concurrent_staging_then_finalize_and_site_read(tmp_path):
             np.testing.assert_allclose(out, ref, atol=0.5 / 254 + 1e-6, rtol=0)
         assert len([e for e in site.log if e[0] == "RANGE"]) == 2 * 5  # index + one inner chunk per array
         assert len(site.log) == 1 + 2 + 3 * 5
+
+
+def test_check_representable_edge_cases_and_memory(tmp_path):
+    import tracemalloc
+
+    _, s = _create(tmp_path)
+    arr = zarr.open_array(s, path="sounding", mode="r")
+    writers.check_representable(arr, np.full((NY * NX, 105), np.nan, np.float32), "all-NaN")  # all NaN -> sentinel, fine
+    writers.check_representable(arr, np.empty((0, 105), np.float32), "empty")
+    x = hour_sounding(0)
+    x[7, 3] = -np.inf
+    with pytest.raises(ValueError, match="infinite"):
+        writers.check_representable(arr, x, "sounding")
+    x[7, 3] = np.nan
+    x[8, 4] = -3277.0  # the minimum alone is out of range
+    with pytest.raises(ValueError, match="representable"):
+        writers.check_representable(arr, x, "sounding")
+    # O(1) extra memory: no float64 copy or masks of the input (40 MB of float32 here)
+    big = np.random.default_rng(0).uniform(-50, 50, size=(10_000_000,)).astype(np.float32)
+    tracemalloc.start()
+    writers.check_representable(arr, big, "big")
+    _, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+    assert peak < 1_000_000
