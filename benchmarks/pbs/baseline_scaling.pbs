@@ -8,6 +8,11 @@
 # Scaling reference: ORIGINAL inference, f00-f18 (19 files), script's own multiprocessing.Pool.
 # Usage: qsub -v NPROCS="4 8" benchmarks/pbs/baseline_scaling.pbs
 #   optional: -v NPROCS=1,PRE="taskset -c 0",TAG=_taskset  (pin to one core; run dir gets the TAG suffix)
+#   optional: -v SPLIT_THREADS=1,TAG=_split  gives each of the N processes 128/N threads. The original
+#     script sets no thread limits, so with default settings every process starts 128 torch/numba
+#     threads and predict runs ~17x slower than on one core (job 8207402). This option measures the
+#     original code under the most favourable threading, so the speed comparison is not inflated by
+#     oversubscription.
 set -uo pipefail
 export PTYPE_FAST=/glade/work/dgagne/ptype_fast
 export REPO=$PTYPE_FAST/ptype-physical
@@ -22,6 +27,10 @@ for N in ${NPROCS:-1}; do
     RUN=$BL/runs/scaling_n${N}${TAG:-}; rm -rf $RUN; mkdir -p $RUN
     ( while true; do echo "$(date +%s) $(free -m | awk 'NR==2{print $3}')" >> $RUN/node_mem_used_mb.txt; sleep 5; done ) &
     SAMP=$!
+    if [ -n "${SPLIT_THREADS:-}" ]; then
+        T=$((128 / N)); export OMP_NUM_THREADS=$T MKL_NUM_THREADS=$T OPENBLAS_NUM_THREADS=$T NUMBA_NUM_THREADS=$T
+        echo "threads per process=$T"
+    fi
     echo "=== n_procs=$N ==="
     /usr/bin/time -v ${PRE:-} python benchmarks/baseline_run.py -c $CFG --out-dir $RUN --fxx-start 0 --fxx-end 18 --n-procs $N
     echo "exit=$?"
