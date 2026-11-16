@@ -1,0 +1,28 @@
+#!/bin/bash
+#PBS -N bl_single
+#PBS -A NAML0001
+#PBS -q main
+#PBS -l select=1:ncpus=128:mpiprocs=1
+#PBS -l walltime=00:50:00
+#PBS -j oe
+# Single-process reference: ORIGINAL inference, f12 only, fresh download each time.
+#  A: default threading (128 cores visible to numba/torch);  B: pinned to one core (taskset -c 0).
+set -uo pipefail
+export PTYPE_FAST=/glade/work/dgagne/ptype_fast
+export REPO=$PTYPE_FAST/ptype-physical
+export BL=/glade/derecho/scratch/dgagne/ptype_fast/baseline
+export KERAS_BACKEND=torch PYTHONPATH=$REPO
+export NUMBA_CACHE_DIR=$BL/numba_cache/${PBS_JOBID:-x}; mkdir -p $NUMBA_CACHE_DIR
+source $PTYPE_FAST/venv/bin/activate
+cd $REPO
+echo "host=$(hostname) job=${PBS_JOBID:-none} commit=$(git rev-parse --short HEAD) date=$(date -u +%FT%TZ)"
+CFG=config/inference_baseline_20240909.yml
+# warm the numba on-disk cache is NOT done: numba cache=True compiles on first call in each job (compile time is included in 'convert_and_interpolate' of the first run).
+for MODE in A_default B_taskset1 A2_default_repeat; do
+    RUN=$BL/runs/single_f12_$MODE; rm -rf $RUN
+    PRE=""; [ $MODE = B_taskset1 ] && PRE="taskset -c 0"
+    echo "=== $MODE ==="
+    /usr/bin/time -v $PRE python benchmarks/baseline_run.py -c $CFG --out-dir $RUN --fxx-start 12 --fxx-end 12 --n-procs 1
+    echo "exit=$?"
+    find $RUN -name '*.nc' | xargs ls -l
+done
