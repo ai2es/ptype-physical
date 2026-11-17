@@ -25,7 +25,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
-          # 3.12 because the hrrr_fast extra needs zarr>=3.4, which does not support 3.11.
+          # 3.12 is the project's minimum (pyproject.toml): the hrrr_fast extra needs zarr>=3.4, which does not support 3.11.
           python-version: '3.12'
           cache: 'pip'
       - name: Install dependencies
