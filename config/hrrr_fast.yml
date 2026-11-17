@@ -56,6 +56,10 @@ upload_root: null
 bucket: wwe-ptype
 region: us-east-1
 aws_cli: aws
+upload_backend: boto3           # boto3 (parallel files and parts) | awscli (aws s3 sync, 10 connections)
+upload_workers: 4               # runs finalized and uploaded at the same time
+upload_file_workers: 8          # files of one store in flight
+upload_part_concurrency: 8      # connections per multipart upload
 storage_class: STANDARD_IA      # Zarr objects only; ptype/inits.json is written separately in STANDARD
 
 # --- logging -------------------------------------------------------------------------------------

@@ -1222,6 +1222,87 @@ class AwsCliUploader:
         return done
 
 
+class Boto3Uploader:
+    """Upload a store with boto3, many files and many parts at a time.
+
+    Why this replaced ``aws s3 sync`` as the default: in the first pilot job on Derecho a node computed 231
+    forecast hours in 7 minutes and then spent 50 minutes uploading, one run at a time at 5-15 MB/s (a 6.8 GB
+    run took 1187 s). ``aws s3 sync`` holds 10 connections and that cannot be raised without editing the
+    user's AWS config. The network study (``benchmarks/results/derecho/network.md``) found throughput to AWS
+    limited per connection, so the remedy is the same as for downloads: more connections. Here
+    ``file_workers`` files are sent at once and each multipart upload uses ``part_concurrency`` connections.
+
+    Behaviour kept from the CLI path: data objects first and ``zarr.json`` documents last (a store only becomes
+    discoverable once its data is there), explicit content types, the configured storage class, nothing is ever
+    deleted, and the index is never written here. A file is skipped when the bucket already holds an object of
+    the same size that is not older than the local file (the rule ``aws s3 sync`` uses), which makes a re-run
+    after a partial upload cheap.
+    """
+
+    name = "s3"
+    PART_BYTES = 16 * 1024 * 1024
+
+    def __init__(self, bucket: str, region: str, session: Any, storage_class: str | None = "STANDARD_IA", file_workers: int = 8, part_concurrency: int = 8, client: Any = None):
+        self.bucket = bucket
+        self.region = region
+        self.storage_class = storage_class
+        self.file_workers = max(1, file_workers)
+        self.part_concurrency = max(1, part_concurrency)
+        if client is None:
+            from botocore.config import Config
+
+            # The pool must hold every connection this uploader can open, for several runs uploading at once,
+            # or boto3 silently queues requests behind a pool of 10.
+            client = session.client(
+                "s3", region_name=region, config=Config(max_pool_connections=4 * self.file_workers * self.part_concurrency, retries={"max_attempts": 8, "mode": "adaptive"})
+            )
+        self.client = client
+
+    def preflight(self) -> None:
+        """Nothing to do: ``resolve_aws_session(verify=True)`` already checked the identity of this session."""
+
+    def _remote(self, key: str) -> dict[str, tuple[int, float]]:
+        """``{object key: (size, last-modified epoch)}`` of what is already under the store prefix."""
+        out: dict[str, tuple[int, float]] = {}
+        for page in self.client.get_paginator("list_objects_v2").paginate(Bucket=self.bucket, Prefix=key.rstrip("/") + "/"):
+            for obj in page.get("Contents", []):
+                out[obj["Key"]] = (int(obj["Size"]), obj["LastModified"].timestamp())
+        return out
+
+    def _put(self, path: Path, key: str) -> None:
+        from boto3.s3.transfer import TransferConfig
+
+        extra = {"ContentType": "application/json" if path.name == "zarr.json" else "application/octet-stream"}
+        if self.storage_class:
+            extra["StorageClass"] = self.storage_class
+        cfg = TransferConfig(multipart_threshold=self.PART_BYTES, multipart_chunksize=self.PART_BYTES, max_concurrency=self.part_concurrency, use_threads=True)
+        self.client.upload_file(str(path), self.bucket, key, ExtraArgs=extra, Config=cfg)
+
+    def upload_store(self, local: Path, key: str) -> list[str]:
+        """Upload every file of ``local`` under ``key``; raise on the first failure (the index must then not be updated)."""
+        if key.rstrip("/").endswith("inits.json") or not key.endswith(".zarr"):
+            raise ValueError(f"refusing to upload to {key!r}: only .zarr store prefixes are uploaded")
+        local = Path(local)
+        remote = self._remote(key)
+        data, meta, skipped, sent_bytes = [], [], 0, 0
+        for path in sorted(p for p in local.rglob("*") if p.is_file()):
+            if path.name == "inits.json":
+                continue  # the index is only ever written by index.update_index
+            okey = f"{key.rstrip('/')}/{path.relative_to(local).as_posix()}"
+            stat = path.stat()
+            have = remote.get(okey)
+            if have is not None and have[0] == stat.st_size and have[1] >= stat.st_mtime:
+                skipped += 1
+                continue
+            sent_bytes += stat.st_size
+            (meta if path.name == "zarr.json" else data).append((path, okey))
+        for batch in (data, meta):  # data first, metadata last
+            with ThreadPoolExecutor(max_workers=self.file_workers, thread_name_prefix="upload") as pool:
+                for fut in [pool.submit(self._put, p, k) for p, k in batch]:
+                    fut.result()
+        return [f"boto3 upload s3://{self.bucket}/{key}: {len(data)} data + {len(meta)} metadata objects, {sent_bytes} bytes, {skipped} unchanged skipped"]
+
+
 class LocalIndex:
     """``inits.json`` in a local directory, updated under an exclusive ``fcntl`` lock.
 
@@ -1373,7 +1454,11 @@ def make_backends(cfg: PipelineConfig, no_upload: bool = False):
             return None, None
         return None, ObstoreIndex(output_s3_store(cfg.bucket, cfg.region, session, quick=True))
     session = resolve_aws_session(profile, cfg.region, verify=True)
-    return AwsCliUploader(cfg.bucket, cfg.region, cfg.aws_cli, cfg.storage_class), ObstoreIndex(output_s3_store(cfg.bucket, cfg.region, session))
+    if cfg.upload_backend == "awscli":
+        uploader: Any = AwsCliUploader(cfg.bucket, cfg.region, cfg.aws_cli, cfg.storage_class)
+    else:
+        uploader = Boto3Uploader(cfg.bucket, cfg.region, session, cfg.storage_class, cfg.upload_file_workers, cfg.upload_part_concurrency)
+    return uploader, ObstoreIndex(output_s3_store(cfg.bucket, cfg.region, session))
 
 
 # =============================================================================================
@@ -1731,7 +1816,9 @@ def run_pipeline(
         if cfg.device.startswith("cuda") and n_gpus == 0:
             raise RuntimeError("device cuda requested but no GPU is visible")
         executor = ProcessPoolExecutor(max_workers=processes, mp_context=ctx, initializer=_init_worker, initargs=(cfg.to_dict(), ctx.Value("i", 0), n_gpus, fetch_slots))
-    finalizer = ThreadPoolExecutor(max_workers=1, thread_name_prefix="finalize")
+    # Several runs finalize and upload at once: workers finish a node's runs far faster than one upload stream
+    # can ship them, so a single finalize thread left the node idle behind the uploads (see Boto3Uploader).
+    finalizer = ThreadPoolExecutor(max_workers=max(1, cfg.upload_workers), thread_name_prefix="finalize")
     fin_futures: list[Future] = []
     queue = deque(todo)
     active: dict[str, RunState] = {}

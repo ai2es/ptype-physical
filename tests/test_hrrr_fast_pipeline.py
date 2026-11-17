@@ -914,3 +914,68 @@ def test_in_flight_counts_recent_submissions_qstat_does_not_list(tmp_path):
     ledger.write_text("".join(json.dumps(r) + "\n" for r in recs))
     assert submit.in_flight_runs(ledger, {"3"}, now=now) == {"2023122100", "2023122102"}
     assert submit.in_flight_runs(ledger, set(), now=now + timedelta(hours=1)) == set()
+
+
+class FakeS3Client:
+    """Just enough of a boto3 S3 client for ``Boto3Uploader``: records uploads, serves a listing."""
+
+    def __init__(self, existing: dict | None = None, fail_key: str | None = None):
+        self.existing = existing or {}
+        self.fail_key = fail_key
+        self.uploads: list[tuple[str, dict]] = []
+        self.lock = threading.Lock()
+
+    def get_paginator(self, name):
+        assert name == "list_objects_v2"
+        client = self
+
+        class Pager:
+            def paginate(self, Bucket, Prefix):
+                yield {"Contents": [{"Key": k, "Size": s, "LastModified": m} for k, (s, m) in client.existing.items() if k.startswith(Prefix)]}
+
+        return Pager()
+
+    def upload_file(self, filename, bucket, key, ExtraArgs=None, Config=None):
+        if self.fail_key and self.fail_key in key:
+            raise RuntimeError("network down")
+        with self.lock:
+            self.uploads.append((key, dict(ExtraArgs or {})))
+
+
+def _fake_store(root):
+    """A tiny directory shaped like a Zarr store: two metadata documents and three data objects."""
+    for rel, n in {"zarr.json": 10, "sounding/zarr.json": 20, "sounding/c/0/0/0": 300, "sounding/c/1/0/0": 301, "sounding/c/2/0/0": 302}.items():
+        p = root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"x" * n)
+    return root
+
+
+def test_boto3_uploader_order_types_and_storage_class(tmp_path):
+    from datetime import UTC, datetime
+
+    store = _fake_store(tmp_path / "hrrr_soundings_20231226_0000.zarr")
+    key = "soundings/2023/12/26/hrrr_soundings_20231226_0000.zarr"
+    # One data object is already in the bucket with the same size and a newer timestamp: it must be skipped.
+    client = FakeS3Client(existing={f"{key}/sounding/c/1/0/0": (301, datetime(2100, 1, 1, tzinfo=UTC))})
+    up = pipeline.Boto3Uploader("wwe-ptype", "us-east-1", session=None, storage_class="STANDARD_IA", file_workers=3, client=client)
+    summary = up.upload_store(store, key)
+    keys = [k for k, _ in client.uploads]
+    assert sorted(keys) == sorted(f"{key}/{r}" for r in ("zarr.json", "sounding/zarr.json", "sounding/c/0/0/0", "sounding/c/2/0/0"))
+    # Metadata documents go last, so a reader never finds a store whose data is still missing.
+    assert all(k.endswith("zarr.json") for k in keys[-2:]) and not any(k.endswith("zarr.json") for k in keys[:-2])
+    for k, extra in client.uploads:
+        assert extra["StorageClass"] == "STANDARD_IA"
+        assert extra["ContentType"] == ("application/json" if k.endswith("zarr.json") else "application/octet-stream")
+    assert "1 unchanged skipped" in summary[0]
+
+
+def test_boto3_uploader_failure_and_guards(tmp_path):
+    store = _fake_store(tmp_path / "x.zarr")
+    up = pipeline.Boto3Uploader("b", "us-east-1", session=None, client=FakeS3Client(fail_key="c/2/"))
+    with pytest.raises(RuntimeError, match="network down"):
+        up.upload_store(store, "ptype/x.zarr")
+    # A failed data upload must stop before any metadata document is sent.
+    assert not any(k.endswith("zarr.json") for k, _ in up.client.uploads)
+    with pytest.raises(ValueError, match="refusing"):
+        up.upload_store(store, "ptype/inits.json")

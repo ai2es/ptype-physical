@@ -92,7 +92,13 @@ class PipelineConfig:
         upload_root: Destination directory of the ``local`` backend; the index is ``<upload_root>/ptype/inits.json``.
         bucket: Destination bucket of the ``s3`` backend.
         region: Bucket region.
-        aws_cli: The ``aws`` executable.
+        aws_cli: The ``aws`` executable (``upload_backend: awscli`` only).
+        upload_backend: ``"boto3"`` (default; parallel files and parts, see ``pipeline.Boto3Uploader``) or ``"awscli"``
+            (``aws s3 sync``, 10 connections).
+        upload_workers: Runs that finalize and upload at the same time.
+        upload_file_workers: Files of one store uploaded at the same time (boto3 backend).
+        upload_part_concurrency: Connections per multipart upload (boto3 backend). A node can therefore hold up to
+            ``upload_workers * upload_file_workers * upload_part_concurrency`` upload connections.
         storage_class: S3 storage class of the uploaded Zarr objects (``aws s3 sync --storage-class``).
             ``STANDARD_IA`` because archived cases are read rarely; ``None`` uses the bucket default. The
             index ``ptype/inits.json`` never goes through the sync (it is written by ``index.update_index``
@@ -143,6 +149,10 @@ class PipelineConfig:
     bucket: str = "wwe-ptype"
     region: str = "us-east-1"
     aws_cli: str = "aws"
+    upload_backend: str = "boto3"
+    upload_workers: int = 4
+    upload_file_workers: int = 8
+    upload_part_concurrency: int = 8
     storage_class: str | None = "STANDARD_IA"
     keep_local: bool = False
     log_level: str = "INFO"
@@ -167,6 +177,10 @@ class PipelineConfig:
             raise ValueError(f"processes must be an integer or 'auto', not {self.processes!r}")
         if self.max_concurrent_fetches is not None and self.max_concurrent_fetches < 1:
             raise ValueError("max_concurrent_fetches must be >= 1 or null (no cap)")
+        if self.upload_backend not in ("boto3", "awscli"):
+            raise ValueError(f"upload_backend must be boto3 or awscli, not {self.upload_backend!r}")
+        if min(self.upload_workers, self.upload_file_workers, self.upload_part_concurrency) < 1:
+            raise ValueError("upload_workers, upload_file_workers and upload_part_concurrency must be >= 1")
         if self.fetch_threads < 1:
             raise ValueError("fetch_threads must be >= 1")
         if self.threads_per_process < 1:
