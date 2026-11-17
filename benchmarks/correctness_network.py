@@ -42,7 +42,7 @@ def original_predict(inputs: np.ndarray, columns: list[str], keras_path: str, sc
         ``(probs, u)`` as float32 arrays of shape ``(n, 4)`` and ``(n,)``.
     """
     import keras
-    import mlguess.keras.callbacks  # noqa: F401  (registers custom classes so the model can be deserialised)
+    import mlguess.keras.callbacks
     import mlguess.keras.models  # noqa: F401
     import pandas as pd
     from bridgescaler import load_scaler
