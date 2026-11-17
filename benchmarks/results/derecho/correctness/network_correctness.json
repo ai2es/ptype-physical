@@ -1,0 +1,49 @@
+{
+ "n_rows": 1902284,
+ "n_rows_compared": 1902284,
+ "rain": {
+  "max_abs": 2.771615982055664e-06,
+  "mean_abs": 2.5092116891337956e-08
+ },
+ "snow": {
+  "max_abs": 4.0531158447265625e-06,
+  "mean_abs": 3.004023898494553e-08
+ },
+ "icep": {
+  "max_abs": 3.248453140258789e-06,
+  "mean_abs": 9.057771614232255e-09
+ },
+ "frzr": {
+  "max_abs": 2.8312206268310547e-06,
+  "mean_abs": 1.0355077713241754e-08
+ },
+ "all_four_probabilities": {
+  "max_abs": 4.0531158447265625e-06,
+  "mean_abs": 1.8636301300939373e-08
+ },
+ "uncertainty": {
+  "max_abs": 2.6226043701171875e-06,
+  "mean_abs": 1.886389276736571e-08
+ },
+ "dominant_class_agreement": 1.0,
+ "dominant_class_disagree_rows": 0,
+ "ref_class_counts": {
+  "rain": 1264563,
+  "snow": 596991,
+  "icep": 9062,
+  "frzr": 31668
+ },
+ "prob_sum_dev_ref_max": 1.4901161193847656e-07,
+ "prob_sum_dev_new_max": 1.3783574104309082e-07,
+ "inputs_dtype_in_file": "float64",
+ "nan_input_rows": 0,
+ "engine": {
+  "engine": "torch",
+  "device": "cpu",
+  "dtype": "float32",
+  "tf32": false,
+  "compile": false,
+  "threads": 8,
+  "pinned": false
+ }
+}
