@@ -979,3 +979,11 @@ def test_boto3_uploader_failure_and_guards(tmp_path):
     assert not any(k.endswith("zarr.json") for k, _ in up.client.uploads)
     with pytest.raises(ValueError, match="refusing"):
         up.upload_store(store, "ptype/inits.json")
+    # An empty path (the current directory), a store of another name, or a directory that is not a store must
+    # never be uploaded, and nothing may be listed or sent before the check.
+    guarded = pipeline.Boto3Uploader("b", "us-east-1", session=None, client=FakeS3Client())
+    (tmp_path / "y.zarr").mkdir()
+    for bad in ("", store, tmp_path / "y.zarr"):
+        with pytest.raises(ValueError, match="refusing"):
+            guarded.upload_store(bad, "ptype/y.zarr")
+    assert guarded.client.uploads == []

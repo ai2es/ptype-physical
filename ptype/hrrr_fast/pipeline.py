@@ -1283,6 +1283,11 @@ class Boto3Uploader:
         if key.rstrip("/").endswith("inits.json") or not key.endswith(".zarr"):
             raise ValueError(f"refusing to upload to {key!r}: only .zarr store prefixes are uploaded")
         local = Path(local)
+        # The source must be a real store whose name matches the destination. An empty path means "the current
+        # directory" to pathlib; without this check a caller with an unset variable uploaded a source checkout
+        # under a store prefix (it happened once, by hand, on Derecho).
+        if not str(local) or local.name != key.rstrip("/").rsplit("/", 1)[-1] or not (local / "zarr.json").is_file():
+            raise ValueError(f"refusing to upload {str(local)!r} to {key!r}: the source must be the Zarr store directory of that name")
         remote = self._remote(key)
         data, meta, skipped, sent_bytes = [], [], 0, 0
         for path in sorted(p for p in local.rglob("*") if p.is_file()):
