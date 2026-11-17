@@ -1,0 +1,27 @@
+#!/bin/bash
+#PBS -N smoke_fetch
+#PBS -A NAML0001
+#PBS -q main
+#PBS -l select=1:ncpus=128:mpiprocs=1
+#PBS -l walltime=00:40:00
+#PBS -j oe
+# End-to-end pipeline (one 19-hour run, no upload) four times on ONE node, changing only where the GRIB
+# bytes come from and how many download threads each worker uses.
+#
+# Why back to back on one node: the network study saw AWS throughput change ~40x within an afternoon, so
+# runs from different jobs cannot be compared. The 8-thread AWS case is repeated at the end so that a
+# change of network state during the job shows up as a difference between the first and last run.
+source "$(dirname "$(readlink -f "${PBS_O_WORKDIR:-.}/benchmarks/pbs/common.sh")")/common.sh"
+OUT=$SCRATCH_DIR/smoke_fetch/${PBS_JOBID%%.*}
+mkdir -p "$OUT"
+for CASE in "s3 8" "gcs 8" "s3 1" "gcs 1" "s3 8"; do
+    set -- $CASE
+    TAG=$1_t$2_$(date +%H%M%S)
+    echo "## case source=$1 fetch_threads=$2 tag=$TAG start=$(date -u +%FT%TZ)"
+    python applications/hrrr_ptype_run.py --config config/hrrr_fast.yml --init 2023122600 --forecast-hours 0-18 \
+        --processes 15 --threads 8 --source "$1" --fetch-threads "$2" --weights "$WEIGHTS/ptype_weights.npz" \
+        --out-dir "$OUT/$TAG" --no-upload --summary-json "$OUT/$TAG.json" 2> "$OUT/$TAG.log"
+    # Outputs are checked for equality across cases below, then removed: 2.5 GB per case is not worth keeping.
+    (cd "$OUT/$TAG" && find . -type f -path "*zarr*" ! -name "*.json" -print0 | sort -z | xargs -0 sha256sum | sha256sum) | tee "$OUT/$TAG.sha"
+    rm -rf "$OUT/$TAG"
+done
