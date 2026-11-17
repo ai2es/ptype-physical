@@ -260,20 +260,30 @@ def active_job_ids(run_cmd: Callable[[Sequence[str]], str] = _run_cmd, user: str
     return ids
 
 
-def in_flight_runs(ledger: Path, active: set[str] | None) -> set[str]:
+RECENT_SUBMIT_GRACE_S = 600
+
+
+def in_flight_runs(ledger: Path, active: set[str] | None, now: datetime | None = None, grace_s: float = RECENT_SUBMIT_GRACE_S) -> set[str]:
     """Runs of ledger jobs that are still active. If the job list is unknown, every ledger run counts as in flight.
 
     Assuming "in flight" when ``qstat`` fails is the safe direction: a skipped run is picked up next time, whereas a
     duplicate job would process (and upload) the same run twice concurrently.
+
+    Jobs submitted less than ``grace_s`` ago count as in flight even if ``qstat`` does not list them. On Derecho a
+    second launcher call two seconds after the first saw none of the ten jobs it had just submitted (``qstat`` there
+    answers from a cache) and submitted all of them again; the ledger knows about them immediately, so it is used
+    for the first minutes of a job's life.
     """
     if not ledger.exists():
         return set()
+    now = now or datetime.now(UTC)
     runs = set()
     for ln in ledger.read_text().splitlines():
         if not ln.strip():
             continue
         rec = json.loads(ln)
-        if active is None or rec["job_id"].split(".")[0] in active:
+        recent = "time" in rec and (now - datetime.fromisoformat(rec["time"])).total_seconds() < grace_s
+        if active is None or recent or rec["job_id"].split(".")[0] in active:
             runs.update(rec["runs"])
     return runs
 

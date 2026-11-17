@@ -898,3 +898,19 @@ def test_config_rejects_bad_fetch_cap():
     with pytest.raises(ValueError):
         PipelineConfig(max_concurrent_fetches=0)
     assert PipelineConfig().max_concurrent_fetches is None and PipelineConfig().memory_per_process_gb == 6.0
+
+
+def test_in_flight_counts_recent_submissions_qstat_does_not_list(tmp_path):
+    """A job submitted seconds ago is in flight even when qstat (cached on Derecho) does not list it yet."""
+    from datetime import UTC, datetime, timedelta
+
+    now = datetime(2026, 11, 17, 3, 5, tzinfo=UTC)
+    ledger = tmp_path / "submitted.jsonl"
+    recs = [
+        {"job_id": "1.srv", "runs": ["2023122100"], "time": (now - timedelta(seconds=2)).isoformat()},  # new, not in qstat yet
+        {"job_id": "2.srv", "runs": ["2023122101"], "time": (now - timedelta(hours=3)).isoformat()},  # old and finished
+        {"job_id": "3.srv", "runs": ["2023122102"], "time": (now - timedelta(hours=3)).isoformat()},  # old, still queued
+    ]
+    ledger.write_text("".join(json.dumps(r) + "\n" for r in recs))
+    assert submit.in_flight_runs(ledger, {"3"}, now=now) == {"2023122100", "2023122102"}
+    assert submit.in_flight_runs(ledger, set(), now=now + timedelta(hours=1)) == set()
