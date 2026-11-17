@@ -56,10 +56,12 @@ Reading the table:
 
 The ~5 GB increase comes from `writers.check_representable` called by `write_sounding_hour` on the whole
 (1,905,141 × 105) hour: it makes float64 copies of the data (`np.asarray(data, dtype=np.float64)`, the finite
-subset, and `np.rint(...)`), ≈ 1.6 GB each. The fix proposed to the writers' owner (check only the finite
-min and max, which is sufficient because rounding is monotonic) would bring the peak back to ≈ 4.5 GB. Until then
-`memory_per_process_gb` is **12** (measured 9.7 GB + margin): on a 235 GB Derecho CPU node with
-`memory_fraction 0.8` that allows 15 workers (vs 16 by cores at 8 threads); after the fix 6 GB would do.
+subset, and `np.rint(...)`), ≈ 1.6 GB each. The check now looks only at the finite minimum and maximum (rounding is monotonic, so that is sufficient; see
+`writers.check_representable`), with no float64 copy. The 9.4-9.7 GB peaks above are from the earlier writer
+version and are kept as measured. The default is now `memory_per_process_gb: 6` (`config/hrrr_fast.yml`), based on
+the 3.4-3.7 GB per worker measured on Derecho (`docs/hrrr_fast.md`, 2.8); on a 235 GB Derecho CPU node with
+`memory_fraction 0.8` that no longer limits the worker count below the 16 allowed by cores at 8 threads (the
+laptop numbers in this section were not re-measured with the current writer).
 
 ## 2. One hour straight from the NOAA bucket (`--source s3`, layout 1x8, f14)
 
