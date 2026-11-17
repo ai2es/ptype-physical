@@ -1,0 +1,24 @@
+#!/bin/bash
+#PBS -N upload_one
+#PBS -A NAML0001
+#PBS -q main
+#PBS -l select=1:ncpus=128:mpiprocs=1
+#PBS -l walltime=00:30:00
+#PBS -j oe
+# ONE run end to end WITH upload to s3://wwe-ptype, as the first real test of `aws s3 sync` and the index update.
+#
+# Why one run before the pilot window: every stage up to finalize has been measured, but the upload and the
+# conditional index write have only been exercised in tests and against a scratch object. A single 19-hour run
+# (about 2.5 GB) shows object sizes, storage class and upload time cheaply, and gives the website a real store.
+#
+# AWS_PROFILE is set here because PBS jobs do not inherit the login shell's environment; the pipeline checks
+# the identity before computing anything, so expired keys end the job in seconds.
+source /glade/work/dgagne/ptype_fast/ptype-physical/benchmarks/pbs/common.sh
+export AWS_PROFILE=${AWS_PROFILE:-ai2es-testbed-user}
+INIT=${INIT:-2023122600}
+OUT=$SCRATCH_DIR/upload_one/${PBS_JOBID%%.*}
+mkdir -p "$OUT"
+python applications/hrrr_ptype_run.py --config config/hrrr_fast.yml --init "$INIT" \
+    --processes 15 --threads 8 --weights "$WEIGHTS/ptype_weights.npz" \
+    --out-dir "$OUT/work" --summary-json "$OUT/summary.json" 2> "$OUT/run.log"
+echo "exit=$?"
