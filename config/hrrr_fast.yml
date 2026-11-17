@@ -4,7 +4,7 @@
 # Defaults are for a Derecho CPU node; the reasoning and measurements are in docs/hrrr_fast.md.
 
 # --- input --------------------------------------------------------------------------------------
-source: s3                      # s3 = public noaa-hrrr-bdp-pds bucket; gcs = Google mirror (same keys and offsets); or a local mirror directory
+source: gcs                     # gcs = Google mirror (default: 4-6x faster than AWS end to end on Derecho, identical output); s3 = noaa-hrrr-bdp-pds; or a local mirror directory
 coalesce: 1048576               # obstore range merge threshold; 1 MiB adds no extra bytes on wrfnat
 fetch_retries: 5                # transient errors only; a missing file (404) is recorded, not retried
 fetch_backoff_s: 2.0

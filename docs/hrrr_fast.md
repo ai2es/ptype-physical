@@ -157,7 +157,9 @@ behaved like a per-connection limit rather than a shared node link. Its cause is
 - `source: gcs` reads Google's mirror instead of AWS. Keys are the same and, for the five forecast hours checked,
   idx byte offsets, object sizes and 21 of 21 sampled range hashes were identical. It gave 120-176 MB/s with 8
   streams while AWS gave 22-30 MB/s, but AWS in its fast state was faster than that, and the two were never
-  measured in the same minute. The switch is manual; there is no automatic fallback.
+  measured in the same minute. End to end on one CPU node (`benchmarks/results/derecho/smoke_fetch_8210303/`), a
+  19-hour run took 67 s from Google and 138 s from AWS with 8 fetch threads each, with identical output, so
+  `gcs` is the default. The switch to `s3` is manual; there is no automatic fallback.
 
 **Download cap.** `max_concurrent_fetches: N` puts a node-wide semaphore (created by the parent, shared by all
 spawned workers) around every GRIB byte-range download; `null` (default) means no cap. A worker that has to wait

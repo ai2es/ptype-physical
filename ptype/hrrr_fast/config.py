@@ -103,7 +103,7 @@ class PipelineConfig:
         log_json: Emit one JSON object per log line (structured logging) instead of plain text.
     """
 
-    source: str = "s3"
+    source: str = "gcs"
     work_dir: str = "./hrrr_ptype_runs"
     weights: str = "ptype_weights.npz"
     engine: str = "torch"
