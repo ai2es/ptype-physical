@@ -477,7 +477,7 @@ class GribHour:
 
         def fetch():
             with fetch_slot(stats):
-                return reader.fetch_ranges(self.store, self.key, plan, coalesce=self.cfg.coalesce)
+                return reader.fetch_ranges(self.store, self.key, plan, coalesce=self.cfg.coalesce, threads=self.cfg.fetch_threads)
 
         t0 = time.perf_counter()
         bufs = call_with_retries(
@@ -502,7 +502,7 @@ class GribHour:
 
 
 class GribSource:
-    """HRRR wrfnat files from the public bucket (anonymous) or from a local mirror directory."""
+    """HRRR wrfnat files from a public bucket (AWS or the Google mirror, anonymous) or a local mirror directory."""
 
     def __init__(self, cfg: PipelineConfig):
         self.cfg = cfg

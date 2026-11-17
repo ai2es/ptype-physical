@@ -143,10 +143,21 @@ threads, CPU node) the peak was 3.4–3.7 GB per worker, hence `memory_per_proce
 
 **Measured on Derecho** (smoke test, one run, 19 forecast hours; CPU node 15 × 8: 194 s wall; GPU node: 412 s;
 no failures). Per-hour medians on the CPU node: fetch 55.5 s, write 5.3, inference 4.1, Bourgouin 3.3, decode 0.8,
-columns 0.7; worker start-up ~50 s; finalize 11.3 s. **The fetch dominates when many workers download at once**: a
-single worker alone fetched an hour in 2.4 s, so the node's link (or per-connection S3 throughput) is shared, not
-multiplied by the number of workers. `max_concurrent_fetches` (below) exists so the result of the network study
-can be applied without changing the process layout.
+columns 0.7; worker start-up ~50 s; finalize 11.3 s. **The fetch dominated**, although a single worker alone had fetched an hour in 2.4 s earlier the same day.
+
+**Why the fetch was slow, and what the pipeline does about it** (`benchmarks/results/derecho/network.md`). The
+same 8-process download test gave 10.6 to 407 MB/s from AWS at different times of one afternoon. In the slow state
+each connection got roughly 0.1-0.2 MB/s, total throughput grew linearly with the number of connections (1 to 32
+processes: 3.1 to 56 MB/s), and a second node downloading at the same time did not slow the first, so the limit
+behaved like a per-connection limit rather than a shared node link. Its cause is not known. Two settings follow:
+
+- `fetch_threads: 8` splits an hour's byte ranges into 8 contiguous shares, one `get_ranges` call per thread.
+  With 8 processes this gave 97.7-99.4 MB/s against 10.6-32.9 MB/s for one call each in the slow state. The one
+  fast-state pair measured was 91 vs 106 MB/s for a single process, so it costs little when the link is fast.
+- `source: gcs` reads Google's mirror instead of AWS. Keys are the same and, for the five forecast hours checked,
+  idx byte offsets, object sizes and 21 of 21 sampled range hashes were identical. It gave 120-176 MB/s with 8
+  streams while AWS gave 22-30 MB/s, but AWS in its fast state was faster than that, and the two were never
+  measured in the same minute. The switch is manual; there is no automatic fallback.
 
 **Download cap.** `max_concurrent_fetches: N` puts a node-wide semaphore (created by the parent, shared by all
 spawned workers) around every GRIB byte-range download; `null` (default) means no cap. A worker that has to wait

@@ -29,7 +29,8 @@ class PipelineConfig:
     """All settings of a pipeline invocation.
 
     Attributes:
-        source: ``"s3"`` for the public NOAA bucket ``noaa-hrrr-bdp-pds`` (anonymous), a local directory
+        source: ``"s3"`` for the public NOAA bucket ``noaa-hrrr-bdp-pds`` (anonymous), ``"gcs"`` for Google's
+            mirror ``high-resolution-rapid-refresh`` (same keys and byte offsets), a local directory
             laid out like the bucket (``hrrr.YYYYMMDD/conus/...grib2`` + ``.idx``; sparse mirrors made by
             ``benchmarks/pipeline_benchmark.py mirror`` work), or ``"synthetic"`` (tests only).
         work_dir: Where run directories are built (node-local or scratch disk). One sub-directory per init.
@@ -50,10 +51,15 @@ class PipelineConfig:
         memory_fraction: Fraction of the node's available memory the workers may use together.
         max_runs_in_flight: Runs whose hours may be queued at the same time; bounds local disk use while
             keeping workers busy across run boundaries.
+        fetch_threads: Threads per worker that each issue their own ``get_ranges`` call for a share of the hour's
+            byte ranges. Download threads wait on the network rather than compute, so they are not part of
+            ``threads_per_process``. 8 is the value measured on Derecho: when the path to AWS was limited per
+            connection, 8 processes x 8 threads reached 97.7-99.4 MB/s against 10.6-32.9 MB/s with one call each;
+            with a fast link the single pair measured was 91 vs 106 MB/s (``benchmarks/results/derecho/network.md``).
         max_concurrent_fetches: Node-wide cap on simultaneous GRIB byte-range downloads (a semaphore shared by all
-            workers), independent of ``processes``; ``None`` = no cap. On Derecho 15 workers downloading at once
-            made the median fetch 55.5 s per hour vs 2.4 s for one worker alone, so the link is shared; the cap
-            lets the network study's result be applied without changing the process layout.
+            workers), independent of ``processes``; ``None`` = no cap. The network study found that throughput on
+            Derecho grew with the number of connections and that nodes did not slow each other, so there is no
+            measured reason to set this; it is kept for sites where a shared link does saturate.
         gpus: Number of GPUs to spread workers over when ``device == "cuda"``; ``None`` = detect.
         n_levels: Hybrid levels read first for the network (wind) variables. 27 reaches 5000 m AGL with a
             two-level margin over the Rockies in the measured files (level 25 is the first whose minimum
@@ -111,6 +117,7 @@ class PipelineConfig:
     memory_fraction: float = 0.8
     max_runs_in_flight: int = 2
     max_concurrent_fetches: int | None = None
+    fetch_threads: int = 8
     gpus: int | None = None
     n_levels: int = 27
     bourgouin_top_m: float = 8000.0
@@ -145,7 +152,7 @@ class PipelineConfig:
         """Expand paths and validate values early, before any worker is started or byte is fetched."""
         for name in PATH_FIELDS:
             value = getattr(self, name)
-            if isinstance(value, str) and value not in ("s3", "synthetic"):
+            if isinstance(value, str) and value not in ("s3", "gcs", "synthetic"):
                 setattr(self, name, os.path.expanduser(os.path.expandvars(value)))
         if self.upload not in ("s3", "local", "none"):
             raise ValueError(f"upload must be s3, local or none, not {self.upload!r}")
@@ -160,6 +167,8 @@ class PipelineConfig:
             raise ValueError(f"processes must be an integer or 'auto', not {self.processes!r}")
         if self.max_concurrent_fetches is not None and self.max_concurrent_fetches < 1:
             raise ValueError("max_concurrent_fetches must be >= 1 or null (no cap)")
+        if self.fetch_threads < 1:
+            raise ValueError("fetch_threads must be >= 1")
         if self.threads_per_process < 1:
             raise ValueError("threads_per_process must be >= 1")
         if self.sounding_encoding not in ("default", "int16-0.1", "int32-0.01", "lossless"):

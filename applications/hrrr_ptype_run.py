@@ -44,9 +44,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--engine", default=None, choices=["torch", "onnx", "numpy", "numba"])
     p.add_argument("--device", default=None, help="cpu or cuda")
     p.add_argument("--weights", default=None, help="exported ptype_weights.npz")
-    p.add_argument("--source", default=None, help="'s3' (NOAA bucket) or a local mirror directory")
+    p.add_argument("--source", default=None, help="'s3' (NOAA AWS bucket), 'gcs' (Google mirror) or a local mirror directory")
     p.add_argument("--out-dir", default=None, help="work directory for run directories (node-local or scratch)")
     p.add_argument("--bourgouin-top-m", type=float, default=None)
+    p.add_argument("--fetch-threads", type=int, default=None, help="download threads per worker, each fetching a share of the byte ranges")
     p.add_argument("--max-concurrent-fetches", type=int, default=None, help="node-wide cap on simultaneous GRIB downloads")
     p.add_argument("--upload", default=None, choices=["s3", "local", "none"])
     p.add_argument("--upload-root", default=None, help="destination of --upload local")
@@ -76,6 +77,7 @@ def config_from_args(a: argparse.Namespace) -> PipelineConfig:
         work_dir=a.out_dir,
         bourgouin_top_m=a.bourgouin_top_m,
         max_concurrent_fetches=a.max_concurrent_fetches,
+        fetch_threads=a.fetch_threads,
         upload=a.upload,
         upload_root=a.upload_root,
         keep_local=a.keep_local,

@@ -350,3 +350,29 @@ def test_decode_uniform_cubes_have_no_nan(monkeypatch):
     out = reader.decode(plan, _level_bytes(plan), decoder="fake", workers=3)
     for v in reader.HYBRID_VARIABLES:
         assert out[v].shape == (4, 3, 5) and not np.isnan(out[v]).any()
+
+
+@pytest.mark.parametrize("threads", [2, 3, 8, 500])
+def test_fetch_ranges_threads_match_single_call(tmp_path, threads):
+    """Splitting the plan across threads must return the same buffers in the same (plan) order."""
+    rng = np.random.default_rng(0)
+    blob = rng.integers(0, 256, size=200_000, dtype=np.uint8).tobytes()
+    key = "hrrr.20231226/conus/hrrr.t00z.wrfnatf00.grib2"
+    (tmp_path / key).parent.mkdir(parents=True)
+    (tmp_path / key).write_bytes(blob)
+    # Messages of different lengths back to back, as in a real file; the last one has no known end.
+    offsets = [0]
+    for i in range(18):
+        offsets.append(offsets[-1] + 3_000 + 500 * i)
+    text = "".join(f"{i + 1}:{o}:d=2023122600:TMP:{i + 1} hybrid level:anl:\n" for i, o in enumerate(offsets))
+    plan = reader.select_messages(reader.parse_idx(text), n_levels=len(offsets), fxx=0, hybrid_variables=("TMP",), surface_fields={}, include_apcp=False)
+    one = [bytes(b) for b in reader.fetch_ranges(tmp_path, key, plan)]
+    many = [bytes(b) for b in reader.fetch_ranges(tmp_path, key, plan, threads=threads)]
+    assert many == one
+    assert one[0] == blob[: offsets[1]] and one[-1] == blob[offsets[-1] :]
+
+
+def test_open_store_gcs_is_anonymous_mirror():
+    """``gcs`` must select Google's mirror, not be mistaken for a local directory name."""
+    store = reader.open_store("gcs")
+    assert type(store).__name__ == "GCSStore"

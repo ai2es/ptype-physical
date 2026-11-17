@@ -34,6 +34,7 @@ Output layout of :func:`decode` (all ``float32``):
 
 from __future__ import annotations
 
+import itertools
 import math
 import re
 from collections.abc import Callable, Sequence
@@ -45,6 +46,7 @@ from pathlib import Path
 import numpy as np
 
 HRRR_BUCKET = "noaa-hrrr-bdp-pds"
+HRRR_GCS_BUCKET = "high-resolution-rapid-refresh"
 HRRR_REGION = "us-east-1"
 
 #: Variables read on every hybrid level 1..N. HRRR wrfnat has no hybrid-level dewpoint, so the
@@ -392,20 +394,29 @@ def hrrr_key(init: date | datetime, cycle: int, fxx: int, product: str = "wrfnat
 
 
 def open_store(source: str | Path | None = None):
-    """Return an obstore store for the public HRRR bucket or for a local mirror directory.
+    """Return an obstore store for a public HRRR bucket or for a local mirror directory.
+
+    Two public copies are supported because throughput from Derecho to AWS swung by ~40x within one
+    afternoon (``benchmarks/results/derecho/network.md``) while Google's mirror was 4-8x faster during
+    the slow periods. The mirror uses the same object keys, and for the forecast hours checked its
+    ``.idx`` byte offsets, object sizes and sampled range hashes were identical to AWS, so the rest of
+    the reader does not care which one it talks to.
 
     Args:
-        source: ``None`` or ``"s3"`` for the anonymous AWS bucket; otherwise a local directory
-            containing ``hrrr.YYYYMMDD/conus/...``.
+        source: ``None`` or ``"s3"`` for the anonymous AWS bucket ``noaa-hrrr-bdp-pds``; ``"gcs"`` for
+            the anonymous Google Cloud mirror ``high-resolution-rapid-refresh``; otherwise a local
+            directory containing ``hrrr.YYYYMMDD/conus/...``.
 
     Returns:
-        An ``obstore`` store. Anonymous S3 access needs ``skip_signature=True``; without it obstore
+        An ``obstore`` store. Anonymous access needs ``skip_signature=True``; without it obstore
         would look for credentials and fail (or, worse, sign requests with unrelated credentials).
     """
-    from obstore.store import LocalStore, S3Store
+    from obstore.store import GCSStore, LocalStore, S3Store
 
     if source is None or source == "s3":
         return S3Store(HRRR_BUCKET, region=HRRR_REGION, skip_signature=True)
+    if source == "gcs":
+        return GCSStore(HRRR_GCS_BUCKET, skip_signature=True)
     return LocalStore(prefix=Path(source).expanduser().resolve())
 
 
@@ -424,8 +435,8 @@ def fetch_idx(store_or_path, key: str) -> str:
     return bytes(obstore.get(store, key + ".idx").bytes()).decode("ascii")
 
 
-def fetch_ranges(store_or_path, key: str, plan: ReadPlan, coalesce: int = 1024 * 1024) -> list[memoryview]:
-    """Fetch every planned message with a single ``obstore.get_ranges`` call.
+def fetch_ranges(store_or_path, key: str, plan: ReadPlan, coalesce: int = 1024 * 1024, threads: int = 1) -> list[memoryview]:
+    """Fetch every planned message with ``obstore.get_ranges``, optionally from several threads.
 
     One call is used (rather than one ``get_range`` per message) because obstore then merges
     ranges that are less than ``coalesce`` bytes apart into one HTTP request and issues the
@@ -439,6 +450,12 @@ def fetch_ranges(store_or_path, key: str, plan: ReadPlan, coalesce: int = 1024 *
         key: Object key of the GRIB2 file.
         plan: Output of :func:`select_messages`.
         coalesce: Maximum gap in bytes between ranges that obstore will merge; ``0`` disables merging.
+        threads: Number of threads that each call ``get_ranges`` on a contiguous share of the plan.
+            One ``get_ranges`` call issues at most 10 requests at a time (fixed in obstore 0.12). On
+            Derecho the path to AWS was at times limited per connection (~0.1-0.2 MB/s each), so the
+            only way to go faster was more connections: 8 processes went from 10.6-32.9 MB/s with one
+            call each to 97.7-99.4 MB/s with 8 threads each. Contiguous shares (not round-robin) keep
+            neighbouring ranges in the same call so coalescing still merges them.
 
     Returns:
         One buffer per planned message, in plan order. The obstore ``Bytes`` objects are returned
@@ -457,8 +474,21 @@ def fetch_ranges(store_or_path, key: str, plan: ReadPlan, coalesce: int = 1024 *
             ends.append(file_size)
         else:
             ends.append(m.entry.end)
-    out = obstore.get_ranges(store, key, starts=plan.starts, ends=ends, coalesce=coalesce)
-    return [memoryview(b) for b in out]
+    starts = plan.starts
+    threads = max(1, min(threads, len(starts)))
+    if threads == 1:
+        out = obstore.get_ranges(store, key, starts=starts, ends=ends, coalesce=coalesce)
+        return [memoryview(b) for b in out]
+    # obstore releases the GIL while it waits on the network, so plain threads are enough here.
+    bounds = [round(i * len(starts) / threads) for i in range(threads + 1)]
+
+    def fetch_share(lo_hi: tuple[int, int]):
+        lo, hi = lo_hi
+        return obstore.get_ranges(store, key, starts=starts[lo:hi], ends=ends[lo:hi], coalesce=coalesce)
+
+    with ThreadPoolExecutor(max_workers=threads) as pool:
+        parts = pool.map(fetch_share, itertools.pairwise(bounds))
+        return [memoryview(b) for part in parts for b in part]
 
 
 def merged_ranges(starts: Sequence[int], ends: Sequence[int], coalesce: int) -> list[tuple[int, int]]:

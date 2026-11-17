@@ -4,7 +4,7 @@
 # Defaults are for a Derecho CPU node; the reasoning and measurements are in docs/hrrr_fast.md.
 
 # --- input --------------------------------------------------------------------------------------
-source: s3                      # public noaa-hrrr-bdp-pds bucket (anonymous); or a local mirror directory
+source: s3                      # s3 = public noaa-hrrr-bdp-pds bucket; gcs = Google mirror (same keys and offsets); or a local mirror directory
 coalesce: 1048576               # obstore range merge threshold; 1 MiB adds no extra bytes on wrfnat
 fetch_retries: 5                # transient errors only; a missing file (404) is recorded, not retried
 fetch_backoff_s: 2.0
@@ -39,6 +39,7 @@ decode_threads: null            # = threads_per_process
 memory_per_process_gb: 6.0      # Derecho: peak 3.4-3.7 GB per worker (15 x 8 on a CPU node) + margin
 memory_fraction: 0.8
 max_runs_in_flight: 2
+fetch_threads: 8                # download threads per worker; more connections is what helped when AWS was slow
 max_concurrent_fetches: null    # node-wide cap on simultaneous GRIB downloads (null = no cap); see docs/hrrr_fast.md
 
 # --- output --------------------------------------------------------------------------------------
