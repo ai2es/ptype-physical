@@ -1,0 +1,34 @@
+#!/bin/bash
+#PBS -N net_cpu
+#PBS -A NAML0001
+#PBS -q main
+#PBS -l select=1:ncpus=128:mpiprocs=1
+#PBS -l walltime=00:30:00
+#PBS -j oe
+# Download throughput vs number of concurrent processes on ONE node (obstore, anonymous AWS), plus
+# within-process concurrency knobs and three repeats of the 8-process test spread over the job.
+# Also used for the GPU node via network_gpu.pbs (NODE_TAG=gpu), so both node types run identical code.
+# Outputs go to scratch, not the checkout: $SCRATCH_DIR/net/.
+export RESULTS=/glade/derecho/scratch/dgagne/ptype_fast/net
+source /glade/work/dgagne/ptype_fast/ptype-physical/benchmarks/pbs/common.sh
+set +e
+TAG=${NODE_TAG:-cpu}
+OUT=$RESULTS/network_${TAG}_sweep_${PBS_JOBID%%.*}.json
+NB() { python benchmarks/network_benchmark.py "$@" --out "$OUT" 2>&1; }
+echo "node=$(hostname) nproc=$(nproc) $(lscpu | grep 'Model name')"
+echo "## sweep over processes (default obstore settings: S3Store, get_ranges, coalesce 1 MiB)"
+NB sweep --label sweep --procs 1 2 4 8 16 32
+echo "## repeat 8 processes: #2 (after the sweep)"
+NB sweep --label repeat2 --procs 8
+echo "## within-process concurrency at 8 processes (threads each calling get_ranges on a share of the ranges)"
+for T in 2 4 8; do NB sweep --label threads${T} --procs 8 --threads $T; done
+echo "## client options at 8 processes"
+NB sweep --label http2_only --procs 8 --client-option http2_only=true
+NB sweep --label coalesce0 --procs 8 --coalesce 0
+NB sweep --label coalesce16MiB --procs 8 --coalesce 16777216
+echo "## within-process concurrency at 1 process"
+for T in 1 2 4 8; do NB sweep --label threads${T} --procs 1 --threads $T; done
+NB sweep --label http2_only --procs 1 --client-option http2_only=true
+echo "## repeat 8 processes: #3 (end of job)"
+NB sweep --label repeat3 --procs 8
+echo "done $(date -u +%FT%TZ)"

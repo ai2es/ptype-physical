@@ -25,14 +25,16 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
+          # 3.12 is the project's minimum (pyproject.toml): the hrrr_fast extra needs zarr>=3.4, which does not support 3.11.
+          python-version: '3.12'
           cache: 'pip'
       - name: Install dependencies
         run: | 
           python -m pip install --upgrade pip
           pip install uv
           uv pip install --system torch --index-url https://download.pytorch.org/whl/cpu
-          uv pip install --system . 
+          # The hrrr_fast extra (obstore, eccodes, numba, zarr>=3.4, cast-value-rs, ...) is needed by tests/test_hrrr_fast_*.py.
+          uv pip install --system ".[hrrr_fast]"
           uv pip install --system ruff pytest pytest-cov
       - name: Lint with ruff
         run: |

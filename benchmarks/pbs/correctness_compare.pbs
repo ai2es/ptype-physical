@@ -1,0 +1,14 @@
+#!/bin/bash
+#PBS -N ptype_compare
+#PBS -A NAML0001
+#PBS -q main
+#PBS -l select=1:ncpus=16:mpiprocs=1
+#PBS -l walltime=00:20:00
+#PBS -j oe
+# Original (wrfprs netCDF) vs new (wrfnat Zarr) for 2023-12-26 00Z f12; needs the outputs of correctness.pbs.
+source /glade/work/dgagne/ptype_fast/ptype-physical/benchmarks/pbs/common.sh
+BL=$SCRATCH_DIR/baseline
+C=$SCRATCH_DIR/correctness
+python benchmarks/compare_original_vs_new.py \
+    --original-nc $BL/runs/smoke_f12/out/hrrr/20231226/0000/MILES_ptype_hrrr_2023-12-26_0000_f12.nc \
+    --new-store $C/new_f12/2023122600/hrrr_ptype_20231226_0000.zarr --forecast-hour 12 --out $C/compare_f12.json

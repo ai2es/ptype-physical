@@ -1,0 +1,21 @@
+#!/bin/bash
+#PBS -N ptype_reader_cpu
+#PBS -A NAML0001
+#PBS -q main
+#PBS -l select=1:ncpus=128:mpiprocs=1:ompthreads=128
+#PBS -l walltime=00:30:00
+#PBS -j oe
+# Reader benchmark on a Derecho CPU node: byte-range fetch from the public HRRR bucket
+# (does the compute node's network change the best coalesce setting?) and decode scaling
+# with threads for each decoder (laptop result: only ecCodes releases the GIL).
+source /glade/work/dgagne/ptype_fast/ptype-physical/benchmarks/pbs/common.sh
+CACHE_DIR=$SCRATCH_DIR/reader_cache_files; CACHE=$CACHE_DIR/f12_n30.pkl
+mkdir -p $CACHE_DIR
+# Fetch: time each coalesce setting twice and keep the bytes for the decode test.
+python benchmarks/reader_benchmark.py fetch --n-levels 30 --cache $CACHE 2>&1 | tee $RESULTS/reader_fetch.txt
+# Decode: thread and process pools up to the full node, to find where ecCodes stops scaling.
+python benchmarks/reader_benchmark.py decode --cache $CACHE --workers 1 2 4 8 16 32 64 128 2>&1 | tee $RESULTS/reader_decode.txt
+python benchmarks/reader_benchmark.py compare --cache $CACHE 2>&1 | tee $RESULTS/reader_compare.txt
+# Height of each hybrid level above ground for a cold-season, a warm-season and an arctic-outbreak
+# file, to choose how many levels are needed to reach 5 km everywhere.
+python benchmarks/reader_benchmark.py agl --files 2023-12-26,0,12 2025-07-15,18,6 2026-01-25,12,0 2024-01-14,12,0 2>&1 | tee $RESULTS/reader_agl.txt

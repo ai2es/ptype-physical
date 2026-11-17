@@ -1,0 +1,23 @@
+#!/bin/bash
+#PBS -N bl_smoke
+#PBS -A NAML0001
+#PBS -q develop
+#PBS -l select=1:ncpus=8:mem=60GB
+#PBS -l walltime=00:50:00
+#PBS -j oe
+# Smoke test of the ORIGINAL HRRR inference (via benchmarks/baseline_run.py): f12, 1 process, saves the input matrix.
+set -uo pipefail
+export PTYPE_FAST=/glade/work/dgagne/ptype_fast
+export REPO=$PTYPE_FAST/ptype-physical
+export BL=/glade/derecho/scratch/dgagne/ptype_fast/baseline
+export KERAS_BACKEND=torch PYTHONPATH=$REPO
+export NUMBA_CACHE_DIR=$BL/numba_cache/${PBS_JOBID:-x}; mkdir -p $NUMBA_CACHE_DIR
+source $PTYPE_FAST/venv/bin/activate
+cd $REPO
+echo "host=$(hostname) job=${PBS_JOBID:-none} commit=$(git rev-parse --short HEAD) date=$(date -u +%FT%TZ)"
+RUN=$BL/runs/smoke_f12; rm -rf $RUN
+/usr/bin/time -v python benchmarks/baseline_run.py -c config/inference_baseline_20240909.yml \
+    --out-dir $RUN --fxx-start 12 --fxx-end 12 --n-procs 1 --save-inputs $BL/f12_inputs
+echo "exit=$?"
+cat $RUN/stages.jsonl
+find $RUN -type f -size +1k | xargs ls -l

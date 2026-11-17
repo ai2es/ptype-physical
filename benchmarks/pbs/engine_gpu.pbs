@@ -1,0 +1,21 @@
+#!/bin/bash
+#PBS -N ptype_engine_gpu
+#PBS -A NAML0001
+#PBS -q main
+#PBS -l select=1:ncpus=64:mpiprocs=1:ngpus=4
+#PBS -l walltime=00:45:00
+#PBS -j oe
+# Inference-engine benchmark on one Derecho GPU node (64 cores, 4 x A100 40 GB).
+# Only one GPU is used per run: the question is the largest batch a single A100 holds and
+# its throughput, which tells us whether one forecast hour (1.9 M columns) fits in one batch.
+source /glade/work/dgagne/ptype_fast/ptype-physical/benchmarks/pbs/common.sh
+nvidia-smi --query-gpu=name,memory.total --format=csv
+export CUDA_VISIBLE_DEVICES=0
+W=$WEIGHTS/ptype_weights.npz
+python benchmarks/engine_benchmark.py --engine torch --device cuda --threads 8 --weights $W --max-rows 268435456 --out $RESULTS/engine_torch_a100_fp32 || echo "FAILED fp32"
+python benchmarks/engine_benchmark.py --engine torch --device cuda --threads 8 --tf32 --weights $W --max-rows 268435456 --out $RESULTS/engine_torch_a100_tf32 || echo "FAILED tf32"
+python benchmarks/engine_benchmark.py --engine torch --device cuda --threads 8 --dtype float16 --weights $W --max-rows 268435456 --out $RESULTS/engine_torch_a100_fp16 || echo "FAILED fp16"
+python benchmarks/engine_benchmark.py --engine onnx --device cuda --threads 8 --weights $W --max-rows 268435456 --out $RESULTS/engine_onnx_a100 || echo "FAILED onnx cuda"
+python benchmarks/engine_benchmark.py --engine keras --device cuda --threads 8 --keras-path $PTYPE_FAST/model/ptype_model_20240909.keras --weights $W --max-rows 268435456 --out $RESULTS/engine_keras_a100 || echo "FAILED keras cuda"
+# CPU engines on the GPU node's 64 cores, for the "CPU prep + GPU inference vs all-CPU" comparison.
+python benchmarks/engine_benchmark.py --engine torch --device cpu --threads 64 --weights $W --mode throughput --out $RESULTS/engine_torch_gpunode_cpu64 || echo "FAILED cpu64"

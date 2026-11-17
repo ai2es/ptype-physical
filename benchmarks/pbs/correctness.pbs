@@ -1,0 +1,26 @@
+#!/bin/bash
+#PBS -N ptype_correct
+#PBS -A NAML0001
+#PBS -q main
+#PBS -l select=1:ncpus=128:mpiprocs=1
+#PBS -l walltime=00:30:00
+#PBS -j oe
+# Correctness evidence for the fast pipeline (one node, two steps):
+#   1. network: the original's dumped 84-column input matrix (2023-12-26 00Z f12) through the original
+#      scaler + Keras model and through the new torch engine (benchmarks/correctness_network.py);
+#   2. pipeline: the new pipeline's f12 output (wrfnat), kept on scratch for benchmarks/compare_original_vs_new.py.
+source /glade/work/dgagne/ptype_fast/ptype-physical/benchmarks/pbs/common.sh
+BL=$SCRATCH_DIR/baseline
+OUT=$SCRATCH_DIR/correctness
+mkdir -p "$OUT"
+# Thread counts are set explicitly: the Keras torch backend otherwise starts 128 threads and is ~17x slower (baseline.md).
+export OMP_NUM_THREADS=8 MKL_NUM_THREADS=8 OPENBLAS_NUM_THREADS=8 NUMBA_NUM_THREADS=8
+python benchmarks/correctness_network.py --inputs-dir $BL/f12_inputs \
+    --keras-path $PTYPE_FAST/model/ptype_model_20240909.keras --scaler-path $PTYPE_FAST/model/ptype_scaler_20240909.json \
+    --weights $WEIGHTS/ptype_weights.npz --batch-size 2048 --threads 8 --out "$OUT/network" 2>&1 | tee "$OUT/network.log"
+rm -rf "$OUT/new_f12"
+python applications/hrrr_ptype_run.py --config config/hrrr_fast.yml --init 2023122600 --forecast-hours 12 \
+    --processes 1 --threads 8 --weights "$WEIGHTS/ptype_weights.npz" --out-dir "$OUT/new_f12" --no-upload \
+    --summary-json "$OUT/new_f12_summary.json" 2> "$OUT/new_f12.log"
+echo "pipeline exit=$?"
+find "$OUT/new_f12" -maxdepth 4 | head -30

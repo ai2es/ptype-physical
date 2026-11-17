@@ -8,7 +8,7 @@ authors = [{name = "University Corporation for Atmospheric Research", email = "m
 readme = "README.md"
 license = {file = "LICENSE"}
 dynamic = ["version"]
-requires-python = ">=3.8"
+requires-python = ">=3.12"
 dependencies = [
     "numpy",
     "scipy",
@@ -32,14 +32,20 @@ dependencies = [
     "seaborn",
     "geopandas"
             ]
+[project.optional-dependencies]
+# Extra packages for the fast HRRR inference pipeline in ptype.hrrr_fast. They are optional so the
+# training and analysis code keeps its lighter install. cast-value-rs provides the Zarr v3
+# cast_value codec used for the scaled-integer encodings that the website's zarrita can decode.
+hrrr_fast = ["numba", "obstore", "eccodes", "zarr>=3.4", "cast-value-rs", "pyproj", "onnx", "onnxruntime", "pyyaml", "psutil", "boto3"]
+
 [tool.setuptools]
-packages = ["ptype", "ptype.soundings"]
+packages = ["ptype", "ptype.soundings", "ptype.hrrr_fast"]
 
 [tool.setuptools_scm]
 version_file = "ptype/_version.py"
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py312"
 src = ["ptype", "tests", "applications"]
 line-length = 180
 
@@ -48,3 +54,6 @@ line-length = 180
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
+
+[tool.pytest.ini_options]
+markers = ["network: tests that read from the public HRRR bucket (skipped unless PTYPE_NETWORK_TESTS=1)"]
