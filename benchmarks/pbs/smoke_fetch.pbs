@@ -11,7 +11,7 @@
 # Why back to back on one node: the network study saw AWS throughput change ~40x within an afternoon, so
 # runs from different jobs cannot be compared. The 8-thread AWS case is repeated at the end so that a
 # change of network state during the job shows up as a difference between the first and last run.
-source "$(dirname "$(readlink -f "${PBS_O_WORKDIR:-.}/benchmarks/pbs/common.sh")")/common.sh"
+source /glade/work/dgagne/ptype_fast/ptype-physical/benchmarks/pbs/common.sh
 OUT=$SCRATCH_DIR/smoke_fetch/${PBS_JOBID%%.*}
 mkdir -p "$OUT"
 for CASE in "s3 8" "gcs 8" "s3 1" "gcs 1" "s3 8"; do
