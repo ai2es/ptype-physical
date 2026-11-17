@@ -85,6 +85,6 @@ The website (`ai2es/ptype-web`) reads these stores directly. Checked against the
 the map layers draw from the gridded store at every pyramid level, a clicked sounding is one range request,
 and re-running the network in the browser on the stored sounding matches the map within 0.017 in probability
 at six precipitating cells once the stored earth-relative winds are rotated back to the grid (0.20 without the
-rotation). One writer bug found this way is still open: the `wind_rotation` root attribute of the sounding
-store is written as the string form of a Python dict, so the website computes the angle from the grid
-attributes instead.
+rotation). The website computes the rotation angle from the `grid` attributes; the `wind_rotation` root
+attribute of the sounding store carries the same constants (`lon_0`, `lat_std`, `cone_constant`) as a JSON
+object, checked in the uploaded stores of 2023-12-21 00 UTC and 2026-05-06 23 UTC.
