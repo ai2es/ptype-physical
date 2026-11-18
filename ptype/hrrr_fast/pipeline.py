@@ -1453,6 +1453,14 @@ class LocalIndex:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         _atomic_write_json(self.path.with_name(name), obj)
 
+    def remove(self, inits: set[str]) -> dict[str, Any]:
+        """Drop runs from the index (retention), under the same lock as :meth:`update`."""
+        with open(self.path.with_suffix(".lock"), "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            merged = index.remove_entries(self.read(), inits)
+            _atomic_write_json(self.path, merged)
+        return merged
+
 
 class ObstoreIndex:
     """``inits.json`` in an obstore store (S3, or ``MemoryStore`` in tests) via ``index.update_index``."""
@@ -1478,6 +1486,10 @@ class ObstoreIndex:
 
         key = f"{self.key.rsplit('/', 1)[0]}/{name}"
         obstore.put(self.store, key, json.dumps(obj, indent=2).encode(), attributes={"Content-Type": "application/json", "Cache-Control": "no-cache"})
+
+    def remove(self, inits: set[str]) -> dict[str, Any]:
+        """Drop runs from the index (retention)."""
+        return index.remove_from_index(self.store, self.key, inits)
 
 
 class CredentialsError(RuntimeError):

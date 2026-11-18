@@ -227,3 +227,158 @@ def test_cli_realtime_flag(weights, tmp_path, monkeypatch):  # noqa: F811
         ["--config", str(cfg_file), "--realtime", "--init", INIT, "--forecast-hours", "0-1", "--poll-seconds", "0.01", "--summary-json", str(tmp_path / "s.json")]
     )
     assert rc == 0 and json.loads((tmp_path / "s.json").read_text())[0]["status"] == "indexed"
+
+
+# ---------------------------------------------------------------------------------------------
+# The cron launcher (applications/hrrr_ptype_realtime_submit.py)
+# ---------------------------------------------------------------------------------------------
+import hrrr_ptype_realtime_submit as rts
+
+
+def launcher_args(tmp_path, now, *extra):
+    return ["--jobs-dir", str(tmp_path / "jobs"), "--account", "TEST0001", "--aws-profile", "some-profile", "--now", now, *extra]
+
+
+def fake_qsub(log):
+    def run_cmd(cmd):
+        log.append(list(cmd))
+        if cmd[0] == "qsub":
+            return f"{1000 + sum(1 for c in log if c[0] == 'qsub')}.casper-pbs\n"
+        if cmd[0] == "qstat":
+            return ""  # nothing queued or running
+        raise AssertionError(cmd)
+
+    return run_cmd
+
+
+def entry(run_id, complete=None):
+    e = {"init": datetime.strptime(run_id, "%Y%m%d%H").strftime("%Y-%m-%dT%H:%MZ"), "forecast_hours": [0], "store": "x.zarr"}
+    if complete is not None:
+        e["complete"] = complete
+    return e
+
+
+def test_launcher_submits_each_new_run_once_at_the_lead_time(tmp_path):
+    log: list = []
+    idx = {"inits": []}
+    # 12:44: the 12Z run is 44 minutes old, one short of the lead time. Older runs inside the lookback start.
+    first = rts.main(launcher_args(tmp_path, "202311261244", "--lookback-hours", "2", "--no-catchup"), fake_qsub(log), lambda _u: idx)
+    assert [r["runs"] for r in first] == [["2023112611"]]
+    assert rts.main(launcher_args(tmp_path, "202311261245", "--lookback-hours", "2", "--no-catchup"), fake_qsub(log), lambda _u: idx)[0]["runs"] == ["2023112612"]
+    # Nothing new five minutes later: both are in the ledger for good, whatever qstat says.
+    assert rts.main(launcher_args(tmp_path, "202311261250", "--lookback-hours", "2", "--no-catchup"), fake_qsub(log), lambda _u: idx) == []
+    script = (tmp_path / "jobs" / "rt_2023112612.pbs").read_text()
+    assert "#PBS -A TEST0001" in script and "#PBS -q casper@casper-pbs" in script and "#PBS -l walltime=02:00:00" in script
+    assert "--realtime --init 2023112612" in script and "export AWS_PROFILE=some-profile" in script and "venv_casper" in script
+    assert "#PBS -l walltime=01:15:00" in (tmp_path / "jobs" / "rt_2023112611.pbs").read_text()  # an 18 h cycle
+
+
+def test_launcher_skips_runs_the_index_lists_as_complete(tmp_path):
+    idx = {"inits": [entry("2023112611"), entry("2023112612", complete=False)]}
+    out = rts.main(launcher_args(tmp_path, "202311261300", "--lookback-hours", "2", "--no-catchup"), fake_qsub([]), lambda _u: idx)
+    assert [r["runs"] for r in out] == [["2023112612"]]  # 11Z is done (archive style entry); 12Z is still arriving
+
+
+def test_launcher_catches_up_unfinished_runs_newest_first_with_a_try_limit(tmp_path):
+    log: list = []
+    idx = {"inits": [entry("2023112606"), entry("2023112605", complete=False)]}
+
+    def at(now):
+        return launcher_args(tmp_path, now, "--lookback-hours", "0.5", "--catchup-hours", "8", "--max-catchup", "2", "--max-attempts", "2")
+
+    out = rts.main(at("202311261200"), fake_qsub(log), lambda _u: idx)
+    # Realtime gives up at +4 h, so the newest run catch-up may take is 07Z (4 h 10 min before 12:00 is 07:50).
+    assert [(r["kind"], r["runs"]) for r in out] == [("catchup", ["2023112607", "2023112605"])]  # 06Z is complete
+    runs_file = next((tmp_path / "jobs").glob("catchup_*.runs")).read_text()
+    assert runs_file == "2023112607 18\n2023112605 18\n"
+    assert "--runs-file" in next((tmp_path / "jobs").glob("catchup_*.pbs")).read_text()
+    # Half an hour later the first job is gone (qstat empty, grace period over) and 08Z has passed the give-up
+    # time: the two newest unfinished runs are taken, so 07Z gets its second try. At 13:00 07Z has used both
+    # tries and is left alone, and 05Z has dropped out of the 8-hour window.
+    again = rts.main(at("202311261230"), fake_qsub(log), lambda _u: idx)
+    assert again[0]["runs"] == ["2023112608", "2023112607"]
+    third = rts.main(at("202311261300"), fake_qsub(log), lambda _u: idx)
+    assert [r["runs"] for r in third if r["kind"] == "catchup"] == [["2023112608"]]
+
+
+def test_launcher_without_an_index_still_starts_realtime_but_not_catchup(tmp_path, capsys):
+    def broken(_url):
+        raise OSError("no route")
+
+    out = rts.main(launcher_args(tmp_path, "202311261300", "--lookback-hours", "1.5"), fake_qsub([]), broken)
+    assert [(r["kind"], r["runs"]) for r in out] == [("realtime", ["2023112612"])]
+    assert "could not read the index" in capsys.readouterr().err
+
+
+def test_launcher_dry_run_writes_nothing(tmp_path):
+    out = rts.main(launcher_args(tmp_path, "202311261300", "--lookback-hours", "1.5", "--dry-run"), fake_qsub([]), lambda _u: {"inits": []})
+    assert out and not (tmp_path / "jobs").exists()
+
+
+def test_launcher_survives_a_refused_qsub_and_retries_next_pass(tmp_path):
+    def refuse(cmd):
+        if cmd[0] == "qsub":
+            raise RuntimeError("qsub: Unknown queue")
+        return ""
+
+    args = launcher_args(tmp_path, "202311261300", "--lookback-hours", "1.5", "--no-catchup")
+    assert rts.main(args, refuse, lambda _u: {"inits": []}) == []
+    assert rts.main(args, fake_qsub([]), lambda _u: {"inits": []})[0]["runs"] == ["2023112612"]
+
+
+# ---------------------------------------------------------------------------------------------
+# Retention (applications/hrrr_ptype_expire.py)
+# ---------------------------------------------------------------------------------------------
+import hrrr_ptype_expire as expire
+
+
+def retention_bucket(tmp_path):
+    """A local bucket with an archive run, and realtime runs that are old/new and snowy/dry."""
+    up = pipeline.LocalUploader(tmp_path / "bucket")
+    idx = pipeline.LocalIndex(tmp_path / "bucket" / index.INDEX_KEY)
+    runs = {
+        "archive": (datetime(2023, 12, 26, 0, tzinfo=UTC), None),  # no realtime flag at all
+        "old_dry": (datetime(2026, 7, 1, 0, tzinfo=UTC), {"realtime": True, "complete": True, "frozen_cells": 12}),
+        "old_snowy": (datetime(2026, 7, 1, 1, tzinfo=UTC), {"realtime": True, "complete": True, "frozen_cells": 100}),
+        "old_unknown": (datetime(2026, 7, 1, 2, tzinfo=UTC), {"realtime": True, "complete": True}),
+        "new_dry": (datetime(2026, 8, 20, 0, tzinfo=UTC), {"realtime": True, "complete": True, "frozen_cells": 0}),
+    }
+    for init, extra in runs.values():
+        for key, _ in expire.store_keys(index.init_string(init)):
+            d = tmp_path / "bucket" / key
+            (d / "0").mkdir(parents=True)
+            (d / "zarr.json").write_text("{}")
+            (d / "0" / "data").write_text("x")
+        e = index.make_entry(init, [0, 1])
+        if extra:
+            e["extra"] = extra
+        idx.update(e)
+    return up, idx, {k: index.init_string(v[0]) for k, v in runs.items()}
+
+
+def test_expire_is_a_dry_run_unless_told_to_delete(tmp_path, capsys):
+    _, _, names = retention_bucket(tmp_path)
+    before = sorted(p.as_posix() for p in (tmp_path / "bucket").rglob("*"))
+    out = expire.main(["--local-root", str(tmp_path / "bucket"), "--now", "202609010000"])
+    assert out["expire"] == [names["old_dry"]] and out["unknown"] == [names["old_unknown"]] and out["removed"] == []
+    assert sorted(p.as_posix() for p in (tmp_path / "bucket").rglob("*")) == before
+    assert "dry run: nothing was changed" in capsys.readouterr().out
+
+
+def test_expire_removes_only_old_realtime_runs_below_the_threshold(tmp_path):
+    _, idx, names = retention_bucket(tmp_path)
+    out = expire.main(["--local-root", str(tmp_path / "bucket"), "--now", "202609010000", "--delete"])
+    assert out["removed"] == [names["old_dry"]] and out["objects"] == 6  # three stores of two files each
+    left = {e["init"] for e in idx.read()["inits"]}
+    assert left == {names["archive"], names["old_snowy"], names["old_unknown"], names["new_dry"]}
+    for key, _ in expire.store_keys(names["old_dry"]):
+        assert not (tmp_path / "bucket" / key).exists()
+    for name in ("archive", "old_snowy", "old_unknown", "new_dry"):
+        for key, _ in expire.store_keys(names[name]):
+            assert (tmp_path / "bucket" / key / "zarr.json").exists()
+
+
+def test_index_remove_entries_is_pure_and_keeps_the_rest():
+    idx = index.merge_entry(index.merge_entry(index.empty_index(), T0, [0], "a.zarr", None), T0 + timedelta(hours=1), [0], "b.zarr", None)
+    out = index.remove_entries(idx, {index.init_string(T0)})
+    assert [e["store"] for e in out["inits"]] == ["b.zarr"] and len(idx["inits"]) == 2

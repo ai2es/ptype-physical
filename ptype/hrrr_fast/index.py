@@ -203,6 +203,38 @@ def update_index(
     raise RuntimeError(msg)
 
 
+def remove_entries(index: dict[str, Any], inits: set[str], updated: datetime | None = None) -> dict[str, Any]:
+    """Return a new index without the runs whose ``init`` string is in ``inits`` (pure; other keys kept)."""
+    out = {k: v for k, v in index.items() if k not in ("inits", "version", "updated")}
+    out["version"] = INDEX_VERSION
+    out["updated"] = _as_utc(updated or datetime.now(UTC)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    out["inits"] = [e for e in index.get("inits", []) if e.get("init") not in inits]
+    return out
+
+
+def remove_from_index(store: ObjectStore, key: str, inits: set[str], max_retries: int = 12, base_delay: float = 0.05, max_delay: float = 2.0) -> dict[str, Any]:
+    """Remove runs from the index at ``key`` with the same conditional write as :func:`update_index`.
+
+    Used by the retention script before it deletes a run's stores, so the website stops listing a run before
+    its data goes. A missing index is left missing.
+    """
+    for attempt in range(max_retries + 1):
+        current, version = _read(store, key)
+        if version is None:
+            return current
+        merged = remove_entries(current, inits)
+        try:
+            obstore.put(store, key, json.dumps(merged, indent=2).encode(), mode=version, attributes={"Content-Type": "application/json", "Cache-Control": "no-cache"})
+        except (PreconditionError, AlreadyExistsError):
+            delay = random.uniform(0, min(max_delay, base_delay * 2**attempt))
+            logger.info("index removal lost a race (attempt %d); retrying in %.2fs", attempt + 1, delay)
+            time.sleep(delay)
+            continue
+        return merged
+    msg = f"could not update {key} after {max_retries + 1} attempts"
+    raise RuntimeError(msg)
+
+
 def main(argv: list[str] | None = None) -> None:
     """Command line: add one run to the index in an S3 bucket.
 
