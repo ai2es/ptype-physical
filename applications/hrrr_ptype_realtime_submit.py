@@ -228,7 +228,10 @@ def main(argv: list[str] | None = None, run_cmd: Callable[[Sequence[str]], str] 
     if done is not None and not a.no_catchup:
         # The scheduler lives on Casper; ask it by name so the same call works from the cron host and from Derecho.
         active = launcher.active_job_ids(lambda cmd: run_cmd([*cmd, f"@{PBS_SERVER}"]))
-        flying = launcher.in_flight_runs(ledger, active, now)
+        # Runs this pass is starting a realtime job for are not in the ledger yet. Without them a run inside both
+        # windows (older than the give-up time, younger than the lookback) got a realtime job and a catch-up job
+        # in the same pass, which is what the first pass after any gap longer than the give-up time looks like.
+        flying = launcher.in_flight_runs(ledger, active, now) | {r for job in planned for r in job["runs"]}
         late = catchup_candidates(now, done, records, flying, timedelta(hours=a.give_up_hours), timedelta(hours=a.catchup_hours), a.max_catchup, a.max_attempts)
         if late:
             runs_file = jobs_dir / f"catchup_{stamp}.runs"
