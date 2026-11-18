@@ -303,12 +303,13 @@ def test_launcher_catches_up_unfinished_runs_newest_first_with_a_try_limit(tmp_p
 
 
 def test_launcher_never_gives_one_run_a_realtime_and_a_catchup_job_in_the_same_pass(tmp_path):
-    # First pass after a gap: 06Z and 07Z are inside the 6-hour lookback and also past the give-up time.
-    out = rts.main(launcher_args(tmp_path, "202311261200", "--catchup-hours", "8"), fake_qsub([]), lambda _u: {"inits": []})
+    # First pass after a gap, at 12:10: 07Z is inside the 6-hour lookback and also past the give-up time
+    # (4 h 10 min before 12:10 is 08:00), so before the fix it got both kinds of job.
+    out = rts.main(launcher_args(tmp_path, "202311261210", "--catchup-hours", "8"), fake_qsub([]), lambda _u: {"inits": []})
     realtime = [r["runs"][0] for r in out if r["kind"] == "realtime"]
     catchup = [r for rec in out if rec["kind"] == "catchup" for r in rec["runs"]]
-    assert realtime == ["2023112606", "2023112607", "2023112608", "2023112609", "2023112610", "2023112611"]
-    assert catchup == ["2023112605", "2023112604"]  # the newest unfinished runs the realtime jobs do not cover
+    assert realtime == ["2023112607", "2023112608", "2023112609", "2023112610", "2023112611"]
+    assert catchup == ["2023112606", "2023112605"]  # the newest unfinished runs the realtime jobs do not cover
 
 
 def test_launcher_without_an_index_still_starts_realtime_but_not_catchup(tmp_path, capsys):
