@@ -27,5 +27,6 @@ What this fixes in the design:
   and sometimes after it (by up to 1.4 minutes). So an idx alone does not mean the GRIB file can be read. The realtime driver treats an hour as
   ready only when both objects are listed (`pipeline.GribSource.available`), which is right on both.
 
-Four cycles on two days is a small sample; the driver does not depend on these numbers, only the job
-submission lead time (40 minutes) and walltimes do.
+Four cycles on two days is a small sample, and not every cycle looks like these: the first live run
+(`live_20261118_16z.md`) had F00 at 73 minutes, after F01 to F06, and its last file at 100 minutes. The driver
+does not depend on these numbers; only the job submission lead time (45 minutes) does.

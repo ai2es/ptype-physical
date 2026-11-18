@@ -268,9 +268,10 @@ def test_launcher_submits_each_new_run_once_at_the_lead_time(tmp_path):
     # Nothing new five minutes later: both are in the ledger for good, whatever qstat says.
     assert rts.main(launcher_args(tmp_path, "202311261250", "--lookback-hours", "2", "--no-catchup"), fake_qsub(log), lambda _u: idx) == []
     script = (tmp_path / "jobs" / "rt_2023112612.pbs").read_text()
-    assert "#PBS -A TEST0001" in script and "#PBS -q casper@casper-pbs" in script and "#PBS -l walltime=02:00:00" in script
+    assert "#PBS -A TEST0001" in script and "#PBS -q casper@casper-pbs" in script and "#PBS -l walltime=03:30:00" in script
     assert "--realtime --init 2023112612" in script and "export AWS_PROFILE=some-profile" in script and "venv_casper" in script
-    assert "#PBS -l walltime=01:15:00" in (tmp_path / "jobs" / "rt_2023112611.pbs").read_text()  # an 18 h cycle
+    # The job must outlast its own wait for files: give-up (4 h) less the lead (45 min), plus 15 minutes to finish.
+    assert "--give-up-hours 4.0" in script and rts.walltime_for(45, 4) == "03:30:00" and rts.walltime_for(50, 2) == "01:25:00"
 
 
 def test_launcher_skips_runs_the_index_lists_as_complete(tmp_path):

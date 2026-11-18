@@ -93,11 +93,14 @@ frozen cells. Storage then grows by about 3.3 GB a run, 78 GB a day.
 ## Cost
 
 A realtime job is 6 cores and 24 GB and lives from 45 minutes after initialization until its last hour is
-published: about 50 minutes for an 18 h cycle and 75 for a 48 h cycle. From those figures a day is about
+published: about 50 minutes for an 18 h cycle and 75 for a 48 h cycle on a normal day (the one live run so far,
+a late 18 h cycle, took 43 minutes). Its walltime is 3 h 30 min so that a late cycle is not cut off; a job
+leaves as soon as its run is complete. From those figures a day is about
 130 core-hours. That is an estimate from measured per-hour times, not a measured day.
 
 ## Not verified yet
 
 - The cron host: that it can see `/glade/work` and submit to Casper.
-- Uploads with the realtime key (it does not exist yet); everything else has run on Casper.
+- Uploads with the realtime key (it does not exist yet). One live cycle has run end to end on Casper with a
+  local directory in place of the bucket (`benchmarks/results/casper/live_20261118_16z.md`).
 - Queue wait at busy times of day (four jobs started in 3 s each, all within 15 minutes of each other).

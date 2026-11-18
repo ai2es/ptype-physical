@@ -182,15 +182,20 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def walltime_for(max_fh: int, give_up_hours: float) -> str:
-    """Walltime of a realtime job.
+def walltime_for(lead_minutes: float, give_up_hours: float) -> str:
+    """Walltime of a realtime job: long enough to reach the give-up time, plus a margin to finish up.
 
-    The last file of a cycle arrives 75-88 minutes (18 h runs) or about 110 minutes (48 h runs) after
-    initialization and the job starts at about 45, so 1 h 15 min and 2 h cover a normal cycle with margin for
-    the final consolidation and upload. A job that outlives its walltime is not a loss: the run stays listed
-    with the hours it published and the catch-up pass completes it.
+    The job starts about ``lead_minutes`` after initialization and waits for files until ``give_up_hours``
+    after it, so anything shorter lets PBS end the job while it is still (rightly) waiting. That happened in
+    the first live test: the walltime was sized for a normal cycle (last file at 75-110 minutes) and the cycle
+    of 2026-11-18 16Z delivered its last file at 100 minutes. Ten minutes more and PBS would have ended the
+    job, leaving the run incomplete until the catch-up pass more than four hours after initialization. A job leaves
+    as soon as its run is complete, so on a normal day the long walltime costs nothing; the 15-minute margin
+    covers consolidating and uploading the gridded store.
     """
-    return "02:00:00" if max_fh > 18 else "01:15:00"
+    seconds = give_up_hours * 3600 - lead_minutes * 60 + 15 * 60
+    seconds = int(-(-max(seconds, 1800) // 300) * 300)  # whole five minutes, at least half an hour
+    return f"{seconds // 3600:02d}:{seconds % 3600 // 60:02d}:00"
 
 
 def main(argv: list[str] | None = None, run_cmd: Callable[[Sequence[str]], str] = launcher._run_cmd, index_reader: Callable[[str], dict] | None = None) -> list[dict]:
@@ -215,7 +220,7 @@ def main(argv: list[str] | None = None, run_cmd: Callable[[Sequence[str]], str] 
         cmd = ["python", "applications/hrrr_ptype_run.py", *common, "--realtime", "--init", rid, "--processes", str(a.processes), "--threads", str(a.threads)]
         cmd += ["--give-up-hours", str(a.give_up_hours), "--summary-json", str(log.with_suffix(".summary.json"))]
         script = render_script(
-            f"rt_{rid[4:]}", log, cmd, account=a.account, queue=a.queue, ncpus=a.ncpus, mem_gb=a.mem_gb, walltime=walltime_for(max_fh, a.give_up_hours),
+            f"rt_{rid[4:]}", log, cmd, account=a.account, queue=a.queue, ncpus=a.ncpus, mem_gb=a.mem_gb, walltime=walltime_for(a.lead_minutes, a.give_up_hours),
             aws_profile=a.aws_profile, extra_args=a.extra_args, comment=f"realtime run {rid}, forecast hours 0-{max_fh}",
         )  # fmt: skip
         planned.append({"kind": "realtime", "runs": [rid], "script": jobs_dir / f"rt_{rid}.pbs", "text": script})
