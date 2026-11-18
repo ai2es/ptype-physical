@@ -1,0 +1,53 @@
+#!/bin/bash
+#PBS -N ptype_casper
+#PBS -A NAML0001
+#PBS -q casper@casper-pbs
+#PBS -l select=1:ncpus=20:mem=60GB
+#PBS -l walltime=00:50:00
+#PBS -j oe
+# What a Casper job needs to know before realtime inference is scheduled there:
+#   1. does the Derecho Python environment run on a Casper node,
+#   2. can a compute node reach the HRRR buckets (Google, AWS) and the output bucket's S3 endpoint, and how fast,
+#   3. how long one forecast hour takes with one worker, from each source,
+#   4. how long an 18-hour run takes with 2 and 4 workers (HRRR files arrive one every 1-2 minutes, so the
+#      question is how few cores keep up).
+# Nothing is uploaded and the index is not read, so no AWS credentials are involved.
+# Submit once per CPU type:  qsub -l select=1:ncpus=20:mem=60GB:cpu_type=genoa benchmarks/pbs/casper_measure.pbs
+export RESULTS=${RESULTS:-/glade/derecho/scratch/$USER/ptype_fast/casper}
+source /glade/work/dgagne/ptype_fast/ptype-physical/benchmarks/pbs/common.sh
+set +e
+JOB=${PBS_JOBID%%.*}
+OUT=$RESULTS/measure_$JOB
+mkdir -p "$OUT"
+INIT48=${INIT48:-2026111712}
+INIT18=${INIT18:-2026111713}
+DAY=${INIT18:0:8}; HH=${INIT18:8:2}
+echo "## node"
+echo "cpu=$(lscpu | sed -n 's/^Model name: *//p') cores_visible=$(nproc) mem_kb=$(sed -n 's/^MemTotal: *//p' /proc/meminfo)"
+python -c "import sys, numpy, zarr, obstore, numba, torch; print('python', sys.version.split()[0], 'numpy', numpy.__version__, 'zarr', zarr.__version__, 'torch', torch.__version__, 'numba', numba.__version__)" || { echo "ENVIRONMENT DOES NOT IMPORT ON THIS NODE"; exit 3; }
+
+echo "## reachability and raw download speed (first 200 MB of one wrfnat file, one stream)"
+F=hrrr.$DAY/conus/hrrr.t${HH}z.wrfnatf06.grib2
+for URL in https://storage.googleapis.com/high-resolution-rapid-refresh/$F https://noaa-hrrr-bdp-pds.s3.amazonaws.com/$F; do
+    curl -s -o /dev/null -r 0-209715199 --max-time 300 -w "%{http_code} bytes=%{size_download} seconds=%{time_total} MB_per_s=%{speed_download} $URL\n" "$URL" | awk '{sub(/MB_per_s=[0-9.]+/, sprintf("MB_per_s=%.1f", substr($4, 10) / 1048576)); print}'
+done
+# The output bucket only answers anonymous requests that carry the website's Referer; a 200 here shows the
+# S3 endpoint is reachable from the node (uploads use the same endpoint with credentials).
+curl -s -o /dev/null --max-time 60 -H 'Referer: https://ai2es.github.io/ptype-web/' -w "%{http_code} seconds=%{time_total} wwe-ptype index\n" https://wwe-ptype.s3.us-east-1.amazonaws.com/ptype/inits.json
+
+RUN() {  # label, then hrrr_ptype_run.py arguments
+    local label=$1; shift
+    local t0=$(date +%s.%N)
+    python applications/hrrr_ptype_run.py --no-upload --ignore-index --out-dir "$OUT/$label" --summary-json "$OUT/$label.json" "$@" > "$OUT/$label.log" 2>&1
+    local rc=$?
+    echo "$label rc=$rc wall_s=$(echo "$(date +%s.%N) - $t0" | bc) hours_done=$(grep -c '"msg": "hour done"' "$OUT/$label.log") size=$(du -sh "$OUT/$label" 2>/dev/null | cut -f1)"
+    rm -rf "$OUT/$label"
+}
+echo "## one forecast hour, one worker of 8 threads, each source (includes numba compilation on first use)"
+RUN warmup_gcs --init $INIT48 --forecast-hours 12 --processes 1 --threads 8 --source gcs
+RUN one_gcs    --init $INIT48 --forecast-hours 13 --processes 1 --threads 8 --source gcs
+RUN one_s3     --init $INIT48 --forecast-hours 14 --processes 1 --threads 8 --source s3
+echo "## 18-hour run (19 forecast hours), 2 then 4 workers of 4 threads... and of 8 threads where cores allow"
+RUN run18_p2t8 --init $INIT18 --processes 2 --threads 8 --source gcs
+RUN run18_p4t4 --init $INIT18 --processes 4 --threads 4 --source gcs
+echo "done $(date -u +%FT%TZ)"
