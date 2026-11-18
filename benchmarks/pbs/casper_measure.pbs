@@ -14,6 +14,7 @@
 # Nothing is uploaded and the index is not read, so no AWS credentials are involved.
 # Submit once per CPU type:  qsub -l select=1:ncpus=20:mem=60GB:cpu_type=genoa benchmarks/pbs/casper_measure.pbs
 export RESULTS=${RESULTS:-/glade/derecho/scratch/$USER/ptype_fast/casper}
+export VENV=${VENV:-/glade/work/dgagne/ptype_fast/venv_casper}
 source /glade/work/dgagne/ptype_fast/ptype-physical/benchmarks/pbs/common.sh
 set +e
 JOB=${PBS_JOBID%%.*}
@@ -23,7 +24,8 @@ INIT48=${INIT48:-2026111712}
 INIT18=${INIT18:-2026111713}
 DAY=${INIT18:0:8}; HH=${INIT18:8:2}
 echo "## node"
-echo "cpu=$(lscpu | sed -n 's/^Model name: *//p') cores_visible=$(nproc) mem_kb=$(sed -n 's/^MemTotal: *//p' /proc/meminfo)"
+# nproc honours OMP_NUM_THREADS (PBS sets it to 1), so ask the scheduler affinity what the job really has.
+echo "cpu=$(lscpu | sed -n 's/^Model name: *//p') cores_usable=$(python -c 'import os; print(len(os.sched_getaffinity(0)))') mem_kb=$(sed -n 's/^MemTotal: *//p' /proc/meminfo)"
 python -c "import sys, numpy, zarr, obstore, numba, torch; print('python', sys.version.split()[0], 'numpy', numpy.__version__, 'zarr', zarr.__version__, 'torch', torch.__version__, 'numba', numba.__version__)" || { echo "ENVIRONMENT DOES NOT IMPORT ON THIS NODE"; exit 3; }
 
 echo "## reachability and raw download speed (first 200 MB of one wrfnat file, one stream)"

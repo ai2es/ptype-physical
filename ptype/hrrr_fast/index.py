@@ -110,6 +110,7 @@ def merge_entry(
     store: str,
     soundings: str | None,
     updated: datetime | None = None,
+    extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Return a new index with this run added, or replacing the run with the same init.
 
@@ -121,11 +122,18 @@ def merge_entry(
     that writes the entry always knows the complete state of its stores.  Entries
     for other inits, and unknown top-level keys, are preserved.  ``soundings``
     is omitted from the entry when ``None``.
+
+    ``extra`` adds further keys to the entry (the realtime driver records
+    ``realtime``, ``complete`` and ``frozen_cells``); it cannot replace the four
+    keys above.  The website ignores keys it does not know.
     """
     key = init_string(init)
     entry: dict[str, Any] = {"init": key, "forecast_hours": sorted({int(h) for h in forecast_hours}), "store": store}
     if soundings is not None:
         entry["soundings"] = soundings
+    for k, v in (extra or {}).items():
+        if k not in ("init", "forecast_hours", "store", "soundings") and v is not None:
+            entry[k] = v
     kept = [e for e in index.get("inits", []) if e.get("init") != key]
     out = {k: v for k, v in index.items() if k not in ("inits", "version", "updated")}
     out["version"] = INDEX_VERSION
@@ -163,7 +171,7 @@ def update_index(
     """Add ``entry`` to the index at ``key`` without losing concurrent updates.
 
     ``entry`` has the keys ``init``, ``forecast_hours``, ``store`` and
-    (optionally) ``soundings``; see ``make_entry``.  Each attempt reads the
+    (optionally) ``soundings`` and ``extra``; see ``make_entry`` and ``merge_entry``.  Each attempt reads the
     object and its ETag, merges, and writes with ``mode="create"`` (object must
     not exist) or ``mode={"e_tag": ...}`` (object must be unchanged).  A losing
     writer gets ``PreconditionError``/``AlreadyExistsError``, sleeps a jittered,
@@ -175,7 +183,7 @@ def update_index(
     """
     for attempt in range(max_retries + 1):
         current, version = _read(store, key)
-        merged = merge_entry(current, entry["init"], entry["forecast_hours"], entry["store"], entry.get("soundings"))
+        merged = merge_entry(current, entry["init"], entry["forecast_hours"], entry["store"], entry.get("soundings"), extra=entry.get("extra"))
         payload = json.dumps(merged, indent=2).encode()
         try:
             obstore.put(

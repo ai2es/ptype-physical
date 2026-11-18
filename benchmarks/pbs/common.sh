@@ -16,7 +16,9 @@ export PYTHONPATH=$REPO
 # stale-cache problems when the code changes between runs and keeps the repo clean.
 export NUMBA_CACHE_DIR=$SCRATCH_DIR/numba_cache/${PBS_JOBID:-interactive}
 mkdir -p "$RESULTS" "$NUMBA_CACHE_DIR" "$WEIGHTS"
-source $PTYPE_FAST/venv/bin/activate
+# Casper has no system Python 3.12, so the Derecho environment does not load there; Casper jobs set VENV to
+# an environment built on a uv-managed Python with the same package versions (docs/realtime.md).
+source ${VENV:-$PTYPE_FAST/venv}/bin/activate
 cd "$REPO"
 echo "host=$(hostname) job=${PBS_JOBID:-none} commit=$(git rev-parse --short HEAD) date=$(date -u +%FT%TZ)"
 if [ ! -f "$WEIGHTS/ptype_weights.npz" ]; then
