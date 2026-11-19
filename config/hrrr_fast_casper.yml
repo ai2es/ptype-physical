@@ -1,0 +1,24 @@
+# Settings of the realtime pipeline on Casper (applications/hrrr_ptype_realtime_submit.py starts the jobs).
+# Only what differs from config/hrrr_fast.yml is listed; every other key keeps the default of
+# ptype.hrrr_fast.config.PipelineConfig. Reasoning and measurements: docs/realtime.md.
+
+source: s3                      # AWS and Google were equally fast from Casper (benchmarks/results/casper/measure.md);
+                                # AWS writes the idx after its GRIB file, so a listed hour is never half there
+weights: /glade/work/dgagne/ptype_fast/weights/ptype_weights.npz
+engine: torch
+device: cpu
+
+# A realtime job only has to keep up with files that arrive one every 1-2 minutes, so it is small: one worker of
+# four threads does an hour in 16-20 s.
+processes: 1
+threads_per_process: 4
+memory_per_process_gb: 6.0
+
+work_dir: /glade/derecho/scratch/$USER/ptype_fast/realtime/runs
+keep_local: false
+
+upload: s3
+bucket: wwe-ptype
+region: us-east-1
+upload_backend: boto3           # the realtime driver uploads named files, which the aws CLI backend cannot
+upload_workers: 2

@@ -110,6 +110,7 @@ def merge_entry(
     store: str,
     soundings: str | None,
     updated: datetime | None = None,
+    extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Return a new index with this run added, or replacing the run with the same init.
 
@@ -121,11 +122,18 @@ def merge_entry(
     that writes the entry always knows the complete state of its stores.  Entries
     for other inits, and unknown top-level keys, are preserved.  ``soundings``
     is omitted from the entry when ``None``.
+
+    ``extra`` adds further keys to the entry (the realtime driver records
+    ``realtime``, ``complete`` and ``frozen_cells``); it cannot replace the four
+    keys above.  The website ignores keys it does not know.
     """
     key = init_string(init)
     entry: dict[str, Any] = {"init": key, "forecast_hours": sorted({int(h) for h in forecast_hours}), "store": store}
     if soundings is not None:
         entry["soundings"] = soundings
+    for k, v in (extra or {}).items():
+        if k not in ("init", "forecast_hours", "store", "soundings") and v is not None:
+            entry[k] = v
     kept = [e for e in index.get("inits", []) if e.get("init") != key]
     out = {k: v for k, v in index.items() if k not in ("inits", "version", "updated")}
     out["version"] = INDEX_VERSION
@@ -163,7 +171,7 @@ def update_index(
     """Add ``entry`` to the index at ``key`` without losing concurrent updates.
 
     ``entry`` has the keys ``init``, ``forecast_hours``, ``store`` and
-    (optionally) ``soundings``; see ``make_entry``.  Each attempt reads the
+    (optionally) ``soundings`` and ``extra``; see ``make_entry`` and ``merge_entry``.  Each attempt reads the
     object and its ETag, merges, and writes with ``mode="create"`` (object must
     not exist) or ``mode={"e_tag": ...}`` (object must be unchanged).  A losing
     writer gets ``PreconditionError``/``AlreadyExistsError``, sleeps a jittered,
@@ -175,7 +183,7 @@ def update_index(
     """
     for attempt in range(max_retries + 1):
         current, version = _read(store, key)
-        merged = merge_entry(current, entry["init"], entry["forecast_hours"], entry["store"], entry.get("soundings"))
+        merged = merge_entry(current, entry["init"], entry["forecast_hours"], entry["store"], entry.get("soundings"), extra=entry.get("extra"))
         payload = json.dumps(merged, indent=2).encode()
         try:
             obstore.put(
@@ -188,6 +196,38 @@ def update_index(
         except (PreconditionError, AlreadyExistsError):
             delay = random.uniform(0, min(max_delay, base_delay * 2**attempt))
             logger.info("index update lost a race (attempt %d); retrying in %.2fs", attempt + 1, delay)
+            time.sleep(delay)
+            continue
+        return merged
+    msg = f"could not update {key} after {max_retries + 1} attempts"
+    raise RuntimeError(msg)
+
+
+def remove_entries(index: dict[str, Any], inits: set[str], updated: datetime | None = None) -> dict[str, Any]:
+    """Return a new index without the runs whose ``init`` string is in ``inits`` (pure; other keys kept)."""
+    out = {k: v for k, v in index.items() if k not in ("inits", "version", "updated")}
+    out["version"] = INDEX_VERSION
+    out["updated"] = _as_utc(updated or datetime.now(UTC)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    out["inits"] = [e for e in index.get("inits", []) if e.get("init") not in inits]
+    return out
+
+
+def remove_from_index(store: ObjectStore, key: str, inits: set[str], max_retries: int = 12, base_delay: float = 0.05, max_delay: float = 2.0) -> dict[str, Any]:
+    """Remove runs from the index at ``key`` with the same conditional write as :func:`update_index`.
+
+    Used by the retention script before it deletes a run's stores, so the website stops listing a run before
+    its data goes. A missing index is left missing.
+    """
+    for attempt in range(max_retries + 1):
+        current, version = _read(store, key)
+        if version is None:
+            return current
+        merged = remove_entries(current, inits)
+        try:
+            obstore.put(store, key, json.dumps(merged, indent=2).encode(), mode=version, attributes={"Content-Type": "application/json", "Cache-Control": "no-cache"})
+        except (PreconditionError, AlreadyExistsError):
+            delay = random.uniform(0, min(max_delay, base_delay * 2**attempt))
+            logger.info("index removal lost a race (attempt %d); retrying in %.2fs", attempt + 1, delay)
             time.sleep(delay)
             continue
         return merged

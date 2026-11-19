@@ -521,6 +521,43 @@ class GribSource:
         )
         return GribHour(self.store, key, reader.parse_idx(text), fxx, self.cfg)
 
+    def available(self, init: datetime, hours: Sequence[int]) -> set[int]:
+        """Forecast hours of a run whose GRIB file AND ``.idx`` are both in the bucket (one listing).
+
+        Both are required because the two public copies publish them in opposite orders: on AWS the idx lands
+        0.5-1.2 minutes after its GRIB file, on Google it is created before it (up to 12.5 minutes, measured
+        on four runs; benchmarks/results/casper/arrival.md). Objects appear whole on both, so "both listed"
+        means the hour can be read.
+        """
+        import obstore
+
+        first = reader.hrrr_key(init, init.hour, 0)
+        directory, stem = first[: first.rindex("/")], first[: first.rindex("f00.grib2")]
+        # A listing prefix must end at a "/" (object stores match whole path segments), and the day's directory
+        # holds every cycle and product (thousands of objects). Keys come back sorted, so start just before this
+        # cycle's wrfnat files and stop at the first key past them: one page instead of the whole day.
+        # (A local mirror lists in directory order, not sorted, so there every name is looked at.)
+        from obstore.store import LocalStore
+
+        ordered = not isinstance(self.store, LocalStore)
+        names: set[str] = set()
+        past = False
+        for batch in obstore.list(self.store, prefix=directory, offset=stem):
+            for m in batch:
+                if m["path"].startswith(stem):
+                    names.add(m["path"])
+                elif ordered:
+                    past = True
+                    break
+            if past:
+                break
+        out = set()
+        for fxx in hours:
+            key = reader.hrrr_key(init, init.hour, fxx)
+            if key in names and key + ".idx" in names:
+                out.add(fxx)
+        return out
+
     def grid(self, init: datetime, hours: Sequence[int]) -> reader.GridMetadata | None:
         """Grid of a run from ONE small message (surface height) of its first available hour.
 
@@ -682,6 +719,9 @@ class SyntheticSource:
         if fxx in self.missing:
             raise MissingInputError(f"synthetic f{fxx:02d} missing")
         return SyntheticHour(self, init, fxx)
+
+    def available(self, init: datetime, hours: Sequence[int]) -> set[int]:
+        return {h for h in hours if h not in self.missing}
 
     def grid(self, init: datetime, hours: Sequence[int]) -> reader.GridMetadata | None:
         return self.grid_meta if any(h not in self.missing for h in hours) else None
@@ -955,6 +995,9 @@ def compute_hour(fields: dict[str, np.ndarray], grid, engine, cfg: PipelineConfi
         "n_short_network": int(n_short),
         "n_short_bourgouin": int(n_short_b),
         "precip_fraction": float(m.mean()),
+        # Cells the HRRR itself calls snow, ice pellets or freezing rain: the retention rule keeps realtime runs
+        # with enough of them (docs/realtime.md).
+        "frozen_cells": int(np.count_nonzero(cat["CSNOW"] | cat["CICEP"] | cat["CFRZR"])),
         "ml_prob_sum_max_dev": float(np.max(np.abs(probs.sum(axis=1) - 1.0))) if probs.size else 0.0,
         "ml_class_freq_in_mask": {c: float(np.mean(probs[m].argmax(axis=1) == i)) if m.any() else 0.0 for i, c in enumerate(CLASS_NAMES)},
         "bourg_class_freq_in_mask": {c: float(np.mean(b_cls[m] == i)) if m.any() else 0.0 for i, c in enumerate(CLASS_NAMES)},
@@ -1163,6 +1206,40 @@ class LocalUploader:
         shutil.copytree(local, dest, dirs_exist_ok=True)
         return [f"copytree {local} {dest}"]
 
+    def upload_files(self, local: Path, key: str, rel_paths: Sequence[str], storage_class: str | None = None) -> list[str]:
+        """Copy only the named files of ``local`` (paths relative to it) to ``<root>/<key>``."""
+        for rel in rel_paths:
+            dest = self.root / key / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(Path(local) / rel, dest)
+        return [f"copy {len(rel_paths)} files {local} {self.root / key}"]
+
+    def list_stores(self, prefix: str) -> list[str]:
+        """Keys of the ``.zarr`` stores under ``prefix``."""
+        base = self.root / prefix
+        return sorted(p.relative_to(self.root).as_posix() for p in base.rglob("*.zarr") if p.is_dir()) if base.exists() else []
+
+    def delete_store(self, key: str, required_prefix: str) -> int:
+        """Remove the store at ``key``; refuses anything outside ``required_prefix``. Returns the number of files removed."""
+        _check_delete(key, required_prefix)
+        dest = self.root / key
+        n = sum(1 for p in dest.rglob("*") if p.is_file()) if dest.exists() else 0
+        shutil.rmtree(dest, ignore_errors=True)
+        return n
+
+
+def _check_delete(key: str, required_prefix: str) -> None:
+    """Deletion is only ever asked for one store under one named prefix; refuse anything else.
+
+    The archive and the index live in the same bucket as the realtime staging stores, so a wrong key here
+    would be unrecoverable. The caller states the prefix it means to clean and the key must be a ``.zarr``
+    store strictly inside it.
+    """
+    p = required_prefix.strip("/") + "/"
+    k = key.strip("/")
+    if not p.strip("/") or not k.startswith(p) or not k.endswith(".zarr") or ".." in k.split("/") or k.endswith("inits.json"):
+        raise ValueError(f"refusing to delete {key!r}: not a .zarr store under {required_prefix!r}")
+
 
 class AwsCliUploader:
     """Upload with ``aws s3 sync`` (credentials from ``$AWS_PROFILE`` / ``~/.aws/credentials`` on Derecho).
@@ -1269,12 +1346,13 @@ class Boto3Uploader:
                 out[obj["Key"]] = (int(obj["Size"]), obj["LastModified"].timestamp())
         return out
 
-    def _put(self, path: Path, key: str) -> None:
+    def _put(self, path: Path, key: str, storage_class: str | None = "default") -> None:
         from boto3.s3.transfer import TransferConfig
 
         extra = {"ContentType": "application/json" if path.name == "zarr.json" else "application/octet-stream"}
-        if self.storage_class:
-            extra["StorageClass"] = self.storage_class
+        storage_class = self.storage_class if storage_class == "default" else storage_class
+        if storage_class:
+            extra["StorageClass"] = storage_class
         cfg = TransferConfig(multipart_threshold=self.PART_BYTES, multipart_chunksize=self.PART_BYTES, max_concurrency=self.part_concurrency, use_threads=True)
         self.client.upload_file(str(path), self.bucket, key, ExtraArgs=extra, Config=cfg)
 
@@ -1307,6 +1385,46 @@ class Boto3Uploader:
                     fut.result()
         return [f"boto3 upload s3://{self.bucket}/{key}: {len(data)} data + {len(meta)} metadata objects, {sent_bytes} bytes, {skipped} unchanged skipped"]
 
+    def upload_files(self, local: Path, key: str, rel_paths: Sequence[str], storage_class: str | None = "default") -> list[str]:
+        """Upload only the named files of ``local`` (paths relative to it) under ``key``; data before ``zarr.json``.
+
+        The realtime driver publishes one forecast hour at a time while other hours are still being written
+        into the same local store, so it names the finished files instead of walking the directory (a walk
+        would pick up another hour's half-written temporary file). No listing is made: a re-sent hour simply
+        overwrites its own objects.
+        """
+        if key.rstrip("/").endswith("inits.json") or not key.endswith(".zarr"):
+            raise ValueError(f"refusing to upload to {key!r}: only .zarr store prefixes are uploaded")
+        local = Path(local)
+        if not str(local) or local.name != key.rstrip("/").rsplit("/", 1)[-1] or not (local / "zarr.json").is_file():
+            raise ValueError(f"refusing to upload {str(local)!r} to {key!r}: the source must be the Zarr store directory of that name")
+        items = [(local / rel, f"{key.rstrip('/')}/{rel}") for rel in rel_paths if Path(rel).name != "inits.json"]
+        data = [it for it in items if it[0].name != "zarr.json"]
+        meta = [it for it in items if it[0].name == "zarr.json"]
+        for batch in (data, meta):
+            with ThreadPoolExecutor(max_workers=self.file_workers, thread_name_prefix="upload") as pool:
+                for fut in [pool.submit(self._put, p, k, storage_class) for p, k in batch]:
+                    fut.result()
+        return [f"boto3 upload s3://{self.bucket}/{key}: {len(data)} data + {len(meta)} metadata objects (named files)"]
+
+    def list_stores(self, prefix: str) -> list[str]:
+        """Keys of the ``.zarr`` stores under ``prefix`` (from the root ``zarr.json`` of each)."""
+        out = set()
+        for page in self.client.get_paginator("list_objects_v2").paginate(Bucket=self.bucket, Prefix=prefix.rstrip("/") + "/"):
+            for obj in page.get("Contents", []):
+                k = obj["Key"]
+                if ".zarr/" in k:
+                    out.add(k[: k.index(".zarr/") + 5])
+        return sorted(out)
+
+    def delete_store(self, key: str, required_prefix: str) -> int:
+        """Delete every object of the store at ``key``; refuses anything outside ``required_prefix``. Returns the count."""
+        _check_delete(key, required_prefix)
+        keys = list(self._remote(key))
+        for i in range(0, len(keys), 1000):
+            self.client.delete_objects(Bucket=self.bucket, Delete={"Objects": [{"Key": k} for k in keys[i : i + 1000]], "Quiet": True})
+        return len(keys)
+
 
 class LocalIndex:
     """``inits.json`` in a local directory, updated under an exclusive ``fcntl`` lock.
@@ -1326,7 +1444,20 @@ class LocalIndex:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.path.with_suffix(".lock"), "w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
-            merged = index.merge_entry(self.read(), entry["init"], entry["forecast_hours"], entry["store"], entry.get("soundings"))
+            merged = index.merge_entry(self.read(), entry["init"], entry["forecast_hours"], entry["store"], entry.get("soundings"), extra=entry.get("extra"))
+            _atomic_write_json(self.path, merged)
+        return merged
+
+    def write_json(self, name: str, obj: Any) -> None:
+        """Write a small JSON document next to the index (the realtime status file)."""
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_write_json(self.path.with_name(name), obj)
+
+    def remove(self, inits: set[str]) -> dict[str, Any]:
+        """Drop runs from the index (retention), under the same lock as :meth:`update`."""
+        with open(self.path.with_suffix(".lock"), "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            merged = index.remove_entries(self.read(), inits)
             _atomic_write_json(self.path, merged)
         return merged
 
@@ -1348,6 +1479,17 @@ class ObstoreIndex:
 
     def update(self, entry: dict[str, Any]) -> dict[str, Any]:
         return index.update_index(self.store, self.key, entry)
+
+    def write_json(self, name: str, obj: Any) -> None:
+        """Write a small JSON document next to the index (the realtime status file); last writer wins."""
+        import obstore
+
+        key = f"{self.key.rsplit('/', 1)[0]}/{name}"
+        obstore.put(self.store, key, json.dumps(obj, indent=2).encode(), attributes={"Content-Type": "application/json", "Cache-Control": "no-cache"})
+
+    def remove(self, inits: set[str]) -> dict[str, Any]:
+        """Drop runs from the index (retention)."""
+        return index.remove_from_index(self.store, self.key, inits)
 
 
 class CredentialsError(RuntimeError):
@@ -1671,7 +1813,7 @@ def finalize_ptype(st: RunState, cfg: PipelineConfig) -> bool:
     return True
 
 
-def finalize_run(st: RunState, cfg: PipelineConfig, uploader, index_backend, no_upload: bool) -> dict[str, Any]:
+def finalize_run(st: RunState, cfg: PipelineConfig, uploader, index_backend, no_upload: bool, entry_extra: dict[str, Any] | None = None) -> dict[str, Any]:
     """Finalize the gridded store, upload both stores, THEN update the index, THEN optionally remove the local copy.
 
     The order is the safety property: the website only learns about a run from the index, so the index must
@@ -1715,6 +1857,8 @@ def finalize_run(st: RunState, cfg: PipelineConfig, uploader, index_backend, no_
         m["upload"] = up
         try:
             entry = index.make_entry(st.spec.init, written)
+            if entry_extra:
+                entry["extra"] = dict(entry_extra)
             index_backend.update(entry)
             m["index"] = {"ok": True, "entry": {k: (v.isoformat() if isinstance(v, datetime) else v) for k, v in entry.items()}, "time": datetime.now(UTC).isoformat()}
             m["status"] = "indexed"
@@ -1747,12 +1891,36 @@ def _indexed_inits(index_backend, strict: bool = False) -> set[str]:
     if index_backend is None:
         return set()
     try:
-        return {e["init"] for e in index_backend.read().get("inits", [])}
+        # A realtime run that is still arriving (or was cut short) is listed with ``complete: false`` so the site
+        # can show its hours; it is not finished, and a later batch pass must be able to complete it.
+        return {e["init"] for e in index_backend.read().get("inits", []) if e.get("complete", True) is not False}
     except Exception as err:
         if strict:
             raise
         logger.warning("could not read the index; not skipping any run", extra={"error": f"{type(err).__name__}: {str(err)[:300]}"})
         return set()
+
+
+def make_executor(cfg: PipelineConfig, processes: int, source, engine):
+    """The pool that runs :func:`process_hour`: worker processes, or the calling process when ``processes <= 0``.
+
+    Shared by the batch driver and the realtime driver (``ptype.hrrr_fast.realtime``) so both set up threads,
+    GPUs and the node-wide download cap the same way. Call ``executor.shutdown()`` and
+    ``set_fetch_slots(None)`` when done.
+    """
+    import multiprocessing as mp
+
+    ctx = mp.get_context("spawn")
+    # One semaphore for the whole node, shared by every worker (inherited at spawn through initargs).
+    fetch_slots = ctx.Semaphore(cfg.max_concurrent_fetches) if cfg.max_concurrent_fetches else None
+    if processes <= 0:
+        set_fetch_slots(fetch_slots)
+        return InlineExecutor(WorkerContext(cfg, 0, source=source, engine=engine))
+    os.environ.update(thread_env(cfg.threads_per_process))
+    n_gpus = (cfg.gpus if cfg.gpus is not None else detect_gpus()) if cfg.device.startswith("cuda") else 0
+    if cfg.device.startswith("cuda") and n_gpus == 0:
+        raise RuntimeError("device cuda requested but no GPU is visible")
+    return ProcessPoolExecutor(max_workers=processes, mp_context=ctx, initializer=_init_worker, initargs=(cfg.to_dict(), ctx.Value("i", 0), n_gpus, fetch_slots))
 
 
 def run_pipeline(
@@ -1807,20 +1975,7 @@ def run_pipeline(
     logger.info(
         "starting", extra={"runs": len(todo), "hours": n_tasks, "processes": processes, "threads_per_process": cfg.threads_per_process, "engine": cfg.engine, "device": cfg.device}
     )
-    import multiprocessing as mp
-
-    ctx = mp.get_context("spawn")
-    # One semaphore for the whole node, shared by every worker (inherited at spawn through initargs).
-    fetch_slots = ctx.Semaphore(cfg.max_concurrent_fetches) if cfg.max_concurrent_fetches else None
-    if processes <= 0:
-        set_fetch_slots(fetch_slots)
-        executor = InlineExecutor(WorkerContext(cfg, 0, source=parent_source, engine=engine))
-    else:
-        os.environ.update(thread_env(cfg.threads_per_process))
-        n_gpus = (cfg.gpus if cfg.gpus is not None else detect_gpus()) if cfg.device.startswith("cuda") else 0
-        if cfg.device.startswith("cuda") and n_gpus == 0:
-            raise RuntimeError("device cuda requested but no GPU is visible")
-        executor = ProcessPoolExecutor(max_workers=processes, mp_context=ctx, initializer=_init_worker, initargs=(cfg.to_dict(), ctx.Value("i", 0), n_gpus, fetch_slots))
+    executor = make_executor(cfg, processes, parent_source, engine)
     # Several runs finalize and upload at once: workers finish a node's runs far faster than one upload stream
     # can ship them, so a single finalize thread left the node idle behind the uploads (see Boto3Uploader).
     finalizer = ThreadPoolExecutor(max_workers=max(1, cfg.upload_workers), thread_name_prefix="finalize")

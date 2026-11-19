@@ -58,6 +58,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--log-level", default=None)
     p.add_argument("--plain-log", action="store_true", help="human-readable log lines instead of JSON")
     p.add_argument("--summary-json", default=None, help="write the final manifests to this file")
+    p.add_argument("--realtime", action="store_true", help="one --init only: process the run as its files arrive and publish each hour (ptype.hrrr_fast.realtime)")
+    p.add_argument("--poll-seconds", type=float, default=30.0, help="--realtime: seconds between listings of the HRRR bucket")
+    p.add_argument("--give-up-hours", type=float, default=4.0, help="--realtime: stop waiting for files this long after initialization")
     return p
 
 
@@ -112,7 +115,17 @@ def main(argv: list[str] | None = None) -> int:
     if a.dry_run:
         pipeline.dry_run(cfg, runs)
         return 0
-    results = pipeline.run_pipeline(cfg, runs, no_upload=a.no_upload, ignore_index=a.ignore_index)
+    if a.realtime:
+        if len(runs) != 1:
+            print("--realtime takes exactly one --init", file=sys.stderr)
+            return 2
+        from datetime import timedelta
+
+        from ptype.hrrr_fast import realtime
+
+        results = [realtime.run_realtime(cfg, runs[0], poll_s=a.poll_seconds, give_up_after=timedelta(hours=a.give_up_hours), no_upload=a.no_upload)]
+    else:
+        results = pipeline.run_pipeline(cfg, runs, no_upload=a.no_upload, ignore_index=a.ignore_index)
     if a.summary_json:
         Path(a.summary_json).write_text(json.dumps(results, indent=1, default=str))
     bad = [r.get("run_id") for r in results if r.get("status") not in OK_STATUSES]
